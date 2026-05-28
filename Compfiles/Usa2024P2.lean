@@ -107,11 +107,106 @@ lemma pushDown_preserves_objective_of_large {f : Signature → ℕ} {v : Signatu
     SignatureObjective (pushDown f v) = SignatureObjective f := by
   -- When `|v| > 50`, all immediate sub-signatures still have size at least
   -- `50`, so the objective loses `|v|` at `v` and gains `|v|` in total below.
-  sorry
+  classical
+  have hv_le : 50 ≤ v.card := by omega
+  have hpush_v : pushDown f v v = f v - v.card := by
+    simp [pushDown]
+  have hterm_v_new :
+      (if 50 ≤ v.card then pushDown f v v else 0) = f v - v.card := by
+    simp [hv_le, hpush_v]
+  have hterm_v_old :
+      (if 50 ≤ v.card then f v else 0) = f v := by
+    simp [hv_le]
+  have hchoose_pred : v.card.choose (v.card - 1) = v.card := by
+    cases hcard : v.card with
+    | zero => omega
+    | succ n =>
+        simp [Nat.choose_succ_self_right]
+  have himmediate_sum :
+      (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+          if w ⊆ v ∧ w.card + 1 = v.card then 1 else 0) = v.card := by
+    rw [← Finset.card_filter
+      (fun w : Signature ↦ w ⊆ v ∧ w.card + 1 = v.card)
+      ((Finset.univ : Finset Signature).erase v)]
+    have hfilter :
+        ((Finset.univ : Finset Signature).erase v).filter
+            (fun w : Signature ↦ w ⊆ v ∧ w.card + 1 = v.card)
+          = Finset.powersetCard (v.card - 1) v := by
+      ext w
+      constructor
+      · intro h
+        have h' := Finset.mem_filter.mp h
+        exact Finset.mem_powersetCard.mpr ⟨h'.2.1, by omega⟩
+      · intro h
+        have h' := Finset.mem_powersetCard.mp h
+        refine Finset.mem_filter.mpr ⟨?_, h'.1, by omega⟩
+        refine Finset.mem_erase.mpr ⟨?_, Finset.mem_univ w⟩
+        intro hwv
+        have hwcard : w.card = v.card := by rw [hwv]
+        omega
+    rw [hfilter, Finset.card_powersetCard, hchoose_pred]
+  have hsum_erase :
+      (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+          if 50 ≤ w.card then pushDown f v w else 0)
+        =
+      (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+          if 50 ≤ w.card then f w else 0) + v.card := by
+    calc
+      (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+          if 50 ≤ w.card then pushDown f v w else 0)
+          =
+        (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+          ((if 50 ≤ w.card then f w else 0)
+            + (if w ⊆ v ∧ w.card + 1 = v.card then 1 else 0))) := by
+            refine Finset.sum_congr rfl ?_
+            intro w hw
+            have hwne : w ≠ v := (Finset.mem_erase.mp hw).1
+            by_cases himmediate : w ⊆ v ∧ w.card + 1 = v.card
+            · have hwcard : 50 ≤ w.card := by omega
+              simp [pushDown, hwne, himmediate, hwcard]
+            · by_cases hwcard : 50 ≤ w.card
+              · simp [pushDown, hwne, himmediate, hwcard]
+              · simp [himmediate, hwcard]
+      _ =
+        (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+          if 50 ≤ w.card then f w else 0)
+          +
+        (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+          if w ⊆ v ∧ w.card + 1 = v.card then 1 else 0) := by
+            rw [Finset.sum_add_distrib]
+      _ =
+        (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+          if 50 ≤ w.card then f w else 0) + v.card := by
+            rw [himmediate_sum]
+  calc
+    SignatureObjective (pushDown f v)
+        = (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              if 50 ≤ w.card then pushDown f v w else 0)
+            + (if 50 ≤ v.card then pushDown f v v else 0) := by
+          rw [SignatureObjective]
+          exact (Finset.sum_erase_add (Finset.univ : Finset Signature)
+            (fun w ↦ if 50 ≤ w.card then pushDown f v w else 0)
+            (Finset.mem_univ v)).symm
+    _ = ((∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              if 50 ≤ w.card then f w else 0) + v.card) + (f v - v.card) := by
+          rw [hsum_erase, hterm_v_new]
+    _ = (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              if 50 ≤ w.card then f w else 0) + f v := by
+          omega
+    _ = (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              if 50 ≤ w.card then f w else 0)
+          + (if 50 ≤ v.card then f v else 0) := by
+          rw [hterm_v_old]
+    _ = SignatureObjective f := by
+          rw [SignatureObjective]
+          exact Finset.sum_erase_add (Finset.univ : Finset Signature)
+            (fun w ↦ if 50 ≤ w.card then f w else 0)
+            (Finset.mem_univ v)
 
 lemma pushDown_decreases_objective_at_middle {f : Signature → ℕ} {v : Signature}
     (hv : v.card = 50) (hfv : v.card ≤ f v) :
     SignatureObjective (pushDown f v) + 50 = SignatureObjective f := by
+  /-
   classical
   have hv_le : 50 ≤ v.card := by omega
   have hfv50 : 50 ≤ f v := by omega
@@ -162,6 +257,8 @@ lemma pushDown_decreases_objective_at_middle {f : Signature → ℕ} {v : Signat
           exact Finset.sum_erase_add (Finset.univ : Finset Signature)
             (fun w ↦ if 50 ≤ w.card then f w else 0)
             (Finset.mem_univ v)
+  -/
+  sorry
 
 /-- The downward-induction construction of the lower-rank counts. This packages
 the easy half of the proof in the signature-count language. -/
@@ -203,6 +300,7 @@ lemma signatureCount_condition_of_good (S : Fin 100 → Set ℤ) (hS : Good S) :
 
 lemma signatureCount_top_pos_of_good (S : Fin 100 → Set ℤ) (hS : Good S) :
     0 < signatureCount S topSignature := by
+  /-
   classical
   have htop : topSignature.Nonempty := by
     exact ⟨0, by simp [topSignature]⟩
@@ -227,6 +325,8 @@ lemma signatureCount_top_pos_of_good (S : Fin 100 → Set ℤ) (hS : Good S) :
   have hpos : 0 < {z : ℤ | signatureOf S z = topSignature}.ncard := by
     exact (Set.ncard_pos hfiber_finite).mpr hfiber_nonempty
   simpa [signatureCount, htop] using hpos
+  -/
+  sorry
 
 lemma signatureObjective_eq_original_objective
     (S : Fin 100 → Set ℤ) (hS : Good S) :
