@@ -4,8 +4,8 @@ Released under Apache 2.0 license as described in the file LICENSE.
 Authors: Shalev Wengrowsky
 -/
 
+import Mathlib.Algebra.BigOperators.Associated
 import Mathlib.Probability.Distributions.Uniform
-import Mathlib.Tactic
 
 import ProblemExtraction
 
@@ -30,6 +30,8 @@ def to_nat_digit : Digit → ℕ := fun d ↦ d + 1
 def is_good_seq {n : ℕ} (s : DigitSeq n) := 10 ∣ ∏a, to_nat_digit (s a)
 def good_seqs {n : ℕ} := {s : DigitSeq n | is_good_seq s}
 
+snip begin
+
 abbrev HasEven {n : ℕ} (s : DigitSeq n) : Prop := ∃ i, Even (to_nat_digit (s i))
 abbrev HasFive {n : ℕ} (s : DigitSeq n) : Prop := ∃ i, to_nat_digit (s i) = 5
 abbrev NoEven {n : ℕ} (s : DigitSeq n) : Prop := ∀ i, ¬ Even (to_nat_digit (s i))
@@ -42,8 +44,25 @@ def allDigitsEquiv {n : ℕ} (P : Digit → Prop) [DecidablePred P] :
   left_inv s := by ext i; rfl
   right_inv f := by ext i; rfl
 
+lemma card_all_digits {n : ℕ} (P : Digit → Prop) [DecidablePred P] {k : ℕ}
+    (hP : Fintype.card {d : Digit // P d} = k) :
+    Fintype.card {s : DigitSeq n // ∀ i, P (s i)} = k ^ n := by
+  rw [Fintype.card_congr (allDigitsEquiv (n := n) P)]
+  rw [Fintype.card_fun]
+  rw [hP]
+  simp
+
 lemma digit_dvd_five_iff (d : Digit) : 5 ∣ to_nat_digit d ↔ to_nat_digit d = 5 := by
   fin_cases d <;> norm_num [to_nat_digit]
+
+lemma card_digits_noFive :
+    Fintype.card {d : Digit // to_nat_digit d ≠ 5} = 8 := by decide
+
+lemma card_digits_noEven :
+    Fintype.card {d : Digit // ¬ Even (to_nat_digit d)} = 5 := by decide
+
+lemma card_digits_noFive_noEven :
+    Fintype.card {d : Digit // to_nat_digit d ≠ 5 ∧ ¬ Even (to_nat_digit d)} = 4 := by decide
 
 lemma ten_dvd_iff_two_and_five (m : ℕ) : 10 ∣ m ↔ 2 ∣ m ∧ 5 ∣ m := by
   constructor
@@ -70,17 +89,11 @@ lemma is_good_seq_iff_hasEven_hasFive {n : ℕ} (s : DigitSeq n) :
 
 lemma card_all_noFive (n : ℕ) :
     Fintype.card {s : DigitSeq n // NoFive s} = 8 ^ n := by
-  rw [Fintype.card_congr (allDigitsEquiv (n := n) (fun d => to_nat_digit d ≠ 5))]
-  rw [Fintype.card_fun]
-  rw [show Fintype.card {d : Digit // to_nat_digit d ≠ 5} = 8 by native_decide]
-  simp
+  exact card_all_digits (fun d => to_nat_digit d ≠ 5) card_digits_noFive
 
 lemma card_all_noEven (n : ℕ) :
     Fintype.card {s : DigitSeq n // NoEven s} = 5 ^ n := by
-  rw [Fintype.card_congr (allDigitsEquiv (n := n) (fun d => ¬ Even (to_nat_digit d)))]
-  rw [Fintype.card_fun]
-  rw [show Fintype.card {d : Digit // ¬ Even (to_nat_digit d)} = 5 by native_decide]
-  simp
+  exact card_all_digits (fun d => ¬ Even (to_nat_digit d)) card_digits_noEven
 
 lemma card_all_noFive_noEven (n : ℕ) :
     Fintype.card {s : DigitSeq n // NoFive s ∧ NoEven s} = 4 ^ n := by
@@ -91,12 +104,8 @@ lemma card_all_noFive_noEven (n : ℕ) :
       left_inv := by intro s; rfl
       right_inv := by intro s; rfl }
   rw [Fintype.card_congr e]
-  rw [Fintype.card_congr
-    (allDigitsEquiv (n := n) (fun d => to_nat_digit d ≠ 5 ∧ ¬ Even (to_nat_digit d)))]
-  rw [Fintype.card_fun]
-  rw [show Fintype.card {d : Digit // to_nat_digit d ≠ 5 ∧ ¬ Even (to_nat_digit d)} = 4
-    by native_decide]
-  simp
+  exact card_all_digits (fun d => to_nat_digit d ≠ 5 ∧ ¬ Even (to_nat_digit d))
+    card_digits_noFive_noEven
 
 lemma card_good_balance (n : ℕ) :
     {s : DigitSeq n | is_good_seq s}.ncard + 8 ^ n + 5 ^ n = 9 ^ n + 4 ^ n := by
@@ -131,6 +140,8 @@ lemma card_good_balance (n : ℕ) :
   rw [hUcard] at hcompl
   omega
 
+snip end
+
 noncomputable determine solution (n : ℕ) : ENNReal :=
   1 + (4 / 9) ^ n - (8 / 9) ^ n - (5 / 9) ^ n 
 
@@ -138,14 +149,18 @@ problem usa1972_p3 (n : ℕ) (_hn : 1 < n) :
   (unifDistN n).toOuterMeasure good_seqs = solution n := by
   classical
   have hcard := card_good_balance n
-  rw [unifDistN, PMF.uniformOfFintype, PMF.toOuterMeasure_uniformOfFinset_apply]
+  rw [unifDistN, PMF.toOuterMeasure_uniformOfFintype_apply]
   simp [solution, good_seqs]
   have hcard' :
-      ({x : DigitSeq n | is_good_seq x} : Finset (DigitSeq n)).card + 8 ^ n + 5 ^ n =
+      Fintype.card {x : DigitSeq n // is_good_seq x} + 8 ^ n + 5 ^ n =
         9 ^ n + 4 ^ n := by
     rw [Set.ncard_eq_toFinset_card] at hcard
-    simpa [Set.toFinset_setOf] using hcard
-  let g := ({x : DigitSeq n | is_good_seq x} : Finset (DigitSeq n)).card
+    have hgood :
+        Fintype.card {x : DigitSeq n // is_good_seq x} =
+          ({x : DigitSeq n | is_good_seq x} : Finset (DigitSeq n)).card :=
+      Fintype.card_of_subtype _ (by intro x; simp)
+    simpa [Set.toFinset_setOf, hgood] using hcard
+  let g := Fintype.card {x : DigitSeq n // is_good_seq x}
   have hcard_enn : ((g : ℕ) + 8 ^ n + 5 ^ n : ENNReal) = (9 ^ n + 4 ^ n : ℕ) := by
     exact_mod_cast hcard'
   have hdiv := congrArg (fun x : ENNReal => x / ((9 : ENNReal) ^ n)) hcard_enn
@@ -154,14 +169,14 @@ problem usa1972_p3 (n : ℕ) (_hn : 1 < n) :
   have hB : ((8 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n) ≠ ⊤ := by finiteness
   have hC : ((5 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n) ≠ ⊤ := by finiteness
   have hdiv' :
-      (↑({x : DigitSeq n | is_good_seq x} : Finset (DigitSeq n)).card *
+      (↑(Fintype.card {x : DigitSeq n // is_good_seq x}) *
           (9 : ENNReal)⁻¹ ^ n +
         (5 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n) +
           (8 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n =
         1 + (4 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n := by
     simpa [add_assoc, add_comm, add_left_comm] using hdiv
   have hAC :
-      ↑({x : DigitSeq n | is_good_seq x} : Finset (DigitSeq n)).card *
+      ↑(Fintype.card {x : DigitSeq n // is_good_seq x}) *
           (9 : ENNReal)⁻¹ ^ n +
         (5 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n =
           (1 + (4 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n) -
