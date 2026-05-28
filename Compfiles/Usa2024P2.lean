@@ -48,6 +48,77 @@ noncomputable def signatureOf (S : Fin 100 → Set ℤ) (z : ℤ) : Signature :=
   classical
   exact Finset.univ.filter fun i ↦ z ∈ S i
 
+lemma ncard_preimage_eq_sum_fibers
+    {α β : Type} [Fintype β] [DecidableEq β]
+    (g : α → β) (p : β → Prop) [DecidablePred p]
+    (hfin : {a : α | p (g a)}.Finite) :
+    {a : α | p (g a)}.ncard =
+      ∑ b : β, if p b then {a : α | g a = b}.ncard else 0 := by
+  classical
+  let e : ↑({a : α | p (g a)}) ≃
+      Sigma (fun b : ↑({b : β | p b}) => ↑({a : α | g a = b.1})) :=
+    { toFun := fun a => ⟨⟨g a.1, a.2⟩, ⟨a.1, rfl⟩⟩
+      invFun := fun x => ⟨x.2.1, by
+        show p (g x.2.1)
+        rw [x.2.2]
+        exact x.1.2⟩
+      left_inv := by
+        intro a
+        ext
+        rfl
+      right_inv := by
+        intro x
+        cases x with
+        | mk b a =>
+          ext
+          · exact a.2
+          · rfl }
+  have hfiber_fin : ∀ b : ↑({b : β | p b}), ({a : α | g a = b.1}).Finite := by
+    intro b
+    exact hfin.subset (by
+      intro a ha
+      show p (g a)
+      rw [ha]
+      exact b.2)
+  letI := hfin.fintype
+  letI : Fintype ↑({b : β | p b}) := inferInstance
+  letI (b : ↑({b : β | p b})) : Fintype ↑({a : α | g a = b.1}) :=
+    (hfiber_fin b).fintype
+  letI : Fintype
+      (Sigma (fun b : ↑({b : β | p b}) => ↑({a : α | g a = b.1}))) :=
+    inferInstance
+  have hAcard :
+      {a : α | p (g a)}.ncard = Fintype.card ↑({a : α | p (g a)}) := by
+    rw [Set.ncard_eq_toFinset_card ({a : α | p (g a)}) hfin]
+    exact hfin.card_toFinset
+  have hsigma :
+      Fintype.card
+        (Sigma (fun b : ↑({b : β | p b}) => ↑({a : α | g a = b.1})))
+        = ∑ b : ↑({b : β | p b}), ({a : α | g a = b.1}).ncard := by
+    calc
+      Fintype.card
+          (Sigma (fun b : ↑({b : β | p b}) => ↑({a : α | g a = b.1})))
+          = ∑ b : ↑({b : β | p b}), Fintype.card ↑({a : α | g a = b.1}) := by
+            exact Fintype.card_sigma
+      _ = ∑ b : ↑({b : β | p b}), ({a : α | g a = b.1}).ncard := by
+        refine Finset.sum_congr rfl ?_
+        intro b _
+        rw [Set.ncard_eq_toFinset_card ({a : α | g a = b.1}) (hfiber_fin b)]
+        exact (hfiber_fin b).card_toFinset.symm
+  calc
+    {a : α | p (g a)}.ncard = Fintype.card ↑({a : α | p (g a)}) := hAcard
+    _ =
+        Fintype.card
+          (Sigma (fun b : ↑({b : β | p b}) => ↑({a : α | g a = b.1}))) := by
+          exact Fintype.card_congr e
+    _ = ∑ b : ↑({b : β | p b}), ({a : α | g a = b.1}).ncard := hsigma
+    _ = ∑ b : β, if p b then {a : α | g a = b}.ncard else 0 := by
+      rw [← Finset.sum_filter]
+      rw [Finset.sum_subtype ((Finset.univ : Finset β).filter p) ?_
+        (fun b => ({a : α | g a = b}).ncard)]
+      intro b
+      simp
+
 /-- Mathematically this is
 `∑ v, if u ⊆ v then f v else 0`, the number of elements lying in every
 set indexed by `u`, where `f v` is the number of elements with exact
@@ -293,7 +364,44 @@ lemma signatureCount_condition_of_good (S : Fin 100 → Set ℤ) (hS : Good S) :
     SignatureCountCondition (signatureCount S) := by
   -- The intersection over a nonempty `u` is the disjoint union of the exact
   -- signature fibers `v` with `u ⊆ v`.
-  sorry
+  classical
+  intro u hu
+  rcases hS.card u hu with ⟨k, hk⟩
+  refine ⟨k, ?_⟩
+  rw [← hk]
+  have hinter_eq :
+      (⋂ i ∈ u, S i) = {z : ℤ | u ⊆ signatureOf S z} := by
+    ext z
+    constructor
+    · intro hz
+      intro i hi
+      have hzi : z ∈ S i := Set.mem_iInter₂.mp hz i hi
+      simp [signatureOf, hzi]
+    · intro hz
+      exact Set.mem_iInter₂.mpr (fun i hi => by
+        have hsig : i ∈ signatureOf S z := hz hi
+        simpa [signatureOf] using hsig)
+  have hinter_finite : (⋂ i ∈ u, S i).Finite := by
+    rcases hu with ⟨i, hi⟩
+    exact (hS.finite i).subset (by
+      intro z hz
+      exact Set.mem_iInter₂.mp hz i hi)
+  calc
+    (⋂ i ∈ u, S i).ncard
+        = {z : ℤ | u ⊆ signatureOf S z}.ncard := by rw [hinter_eq]
+    _ = ∑ v : Signature, if u ⊆ v then {z : ℤ | signatureOf S z = v}.ncard else 0 := by
+          exact ncard_preimage_eq_sum_fibers (signatureOf S) (fun v : Signature => u ⊆ v)
+            (by simpa [← hinter_eq] using hinter_finite)
+    _ = SignatureIntersectionCount (signatureCount S) u := by
+          rw [SignatureIntersectionCount]
+          refine Finset.sum_congr rfl ?_
+          intro v _
+          by_cases huv : u ⊆ v
+          · have hvnonempty : v.Nonempty := by
+              rcases hu with ⟨i, hi⟩
+              exact ⟨i, huv hi⟩
+            simp [huv, signatureCount, hvnonempty]
+          · simp [huv]
 
 lemma signatureCount_top_pos_of_good (S : Fin 100 → Set ℤ) (hS : Good S) :
     0 < signatureCount S topSignature := by
@@ -328,7 +436,48 @@ lemma signatureObjective_eq_original_objective
       {z : ℤ | InAtLeastKSubsets S 50 z }.ncard := by
   -- Partition the finite set of elements lying in at least `50` of the sets by
   -- their exact signature.
-  sorry
+  classical
+  have hsig_card :
+      ∀ z : ℤ, {i : Fin 100 | z ∈ S i}.ncard = (signatureOf S z).card := by
+    intro z
+    rw [Set.ncard_eq_toFinset_card]
+    · simp [signatureOf]
+    · exact Set.finite_univ.subset (by intro i _; simp)
+  have hobj_set :
+      {z : ℤ | InAtLeastKSubsets S 50 z}
+        = {z : ℤ | 50 ≤ (signatureOf S z).card} := by
+    ext z
+    simp [InAtLeastKSubsets, hsig_card z]
+  have hunion_finite : (⋃ i, S i).Finite := Set.finite_iUnion hS.finite
+  have hobj_finite : {z : ℤ | 50 ≤ (signatureOf S z).card}.Finite := by
+    refine hunion_finite.subset ?_
+    intro z hz
+    have hpos : 0 < {i : Fin 100 | z ∈ S i}.ncard := by
+      rw [hsig_card z]
+      omega
+    have hnonempty : {i : Fin 100 | z ∈ S i}.Nonempty := by
+      exact (Set.ncard_pos (Set.finite_univ.subset (by intro i _; simp))).mp hpos
+    rcases hnonempty with ⟨i, hi⟩
+    exact Set.mem_iUnion.mpr ⟨i, hi⟩
+  calc
+    SignatureObjective (signatureCount S)
+        = ∑ v : Signature, if 50 ≤ v.card then {z : ℤ | signatureOf S z = v}.ncard else 0 := by
+          rw [SignatureObjective]
+          refine Finset.sum_congr rfl ?_
+          intro v _
+          by_cases hv : 50 ≤ v.card
+          · have hvnonempty : v.Nonempty := by
+              cases v.eq_empty_or_nonempty with
+              | inl hempty =>
+                  rw [hempty] at hv
+                  simp at hv
+              | inr h => exact h
+            simp [hv, signatureCount, hvnonempty]
+          · simp [hv]
+    _ = {z : ℤ | 50 ≤ (signatureOf S z).card}.ncard := by
+          exact (ncard_preimage_eq_sum_fibers (signatureOf S)
+            (fun v : Signature => 50 ≤ v.card) hobj_finite).symm
+    _ = {z : ℤ | InAtLeastKSubsets S 50 z}.ncard := by rw [hobj_set]
 
 /-- The smoothing argument. Repeated push-downs transform any valid signature
 count model into the canonical high-rank model, never increasing the objective.
