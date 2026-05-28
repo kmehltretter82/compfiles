@@ -54,7 +54,7 @@ set indexed by `u`, where `f v` is the number of elements with exact
 membership signature `v`. It is left abstract here to avoid constructing
 the `2^100`-element finset of all signatures in the intermediate file. -/
 noncomputable def SignatureIntersectionCount (f : Signature → ℕ) (u : Signature) : ℕ := by
-  sorry
+  exact ∑ v : Signature, if u ⊆ v then f v else 0
 
 /-- The finite signature-count formulation of the problem. Only nonempty
 signatures matter, since integers outside all `S i` have the empty signature
@@ -66,7 +66,7 @@ def SignatureCountCondition (f : Signature → ℕ) : Prop :=
 Mathematically this is `∑ v, if 50 ≤ |v| then f v else 0`; it is abstract
 for the same reason as `SignatureIntersectionCount`. -/
 noncomputable def SignatureObjective (f : Signature → ℕ) : ℕ := by
-  sorry
+  exact ∑ v : Signature, if 50 ≤ v.card then f v else 0
 
 /-- The high-rank part of the greedy construction: for `|v| ≥ 50`, assign
 `2 |v| - 100` elements to signature `v`. Lower ranks are filled later by
@@ -112,9 +112,56 @@ lemma pushDown_preserves_objective_of_large {f : Signature → ℕ} {v : Signatu
 lemma pushDown_decreases_objective_at_middle {f : Signature → ℕ} {v : Signature}
     (hv : v.card = 50) (hfv : v.card ≤ f v) :
     SignatureObjective (pushDown f v) + 50 = SignatureObjective f := by
-  -- When `|v| = 50`, the immediate sub-signatures have size `49`, so they do
-  -- not contribute to the objective.
-  sorry
+  classical
+  have hv_le : 50 ≤ v.card := by omega
+  have hfv50 : 50 ≤ f v := by omega
+  have hpush_v : pushDown f v v = f v - 50 := by
+    simp [pushDown, hv]
+  have hterm_v_new :
+      (if 50 ≤ v.card then pushDown f v v else 0) = f v - 50 := by
+    simp [hv_le, hpush_v]
+  have hterm_v_old :
+      (if 50 ≤ v.card then f v else 0) = f v := by
+    simp [hv_le]
+  have hother :
+      (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+          if 50 ≤ w.card then pushDown f v w else 0)
+        =
+      (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+          if 50 ≤ w.card then f w else 0) := by
+    refine Finset.sum_congr rfl ?_
+    intro w hw
+    have hwne : w ≠ v := (Finset.mem_erase.mp hw).1
+    by_cases hwcard : 50 ≤ w.card
+    · have hnot_immediate : ¬(w ⊆ v ∧ w.card + 1 = v.card) := by
+        intro h
+        omega
+      simp [hwcard, pushDown, hwne, hnot_immediate]
+    · simp [hwcard]
+  calc
+    SignatureObjective (pushDown f v) + 50
+        = ((∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              if 50 ≤ w.card then pushDown f v w else 0)
+            + (if 50 ≤ v.card then pushDown f v v else 0)) + 50 := by
+          rw [SignatureObjective]
+          rw [← Finset.sum_erase_add (Finset.univ : Finset Signature)
+            (fun w ↦ if 50 ≤ w.card then pushDown f v w else 0)
+            (Finset.mem_univ v)]
+    _ = ((∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              if 50 ≤ w.card then f w else 0) + (f v - 50)) + 50 := by
+          rw [hother, hterm_v_new]
+    _ = (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              if 50 ≤ w.card then f w else 0) + f v := by
+          omega
+    _ = (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              if 50 ≤ w.card then f w else 0)
+          + (if 50 ≤ v.card then f v else 0) := by
+          rw [hterm_v_old]
+    _ = SignatureObjective f := by
+          rw [SignatureObjective]
+          exact Finset.sum_erase_add (Finset.univ : Finset Signature)
+            (fun w ↦ if 50 ≤ w.card then f w else 0)
+            (Finset.mem_univ v)
 
 /-- The downward-induction construction of the lower-rank counts. This packages
 the easy half of the proof in the signature-count language. -/
@@ -156,8 +203,30 @@ lemma signatureCount_condition_of_good (S : Fin 100 → Set ℤ) (hS : Good S) :
 
 lemma signatureCount_top_pos_of_good (S : Fin 100 → Set ℤ) (hS : Good S) :
     0 < signatureCount S topSignature := by
-  -- This is exactly the hypothesis that the full intersection is nonempty.
-  sorry
+  classical
+  have htop : topSignature.Nonempty := by
+    exact ⟨0, by simp [topSignature]⟩
+  have hnonempty : (⋂ i, S i).Nonempty := by
+    exact Set.nonempty_iff_ne_empty.mpr hS.nonempty_inter
+  rcases hnonempty with ⟨z, hz⟩
+  have hzsig : signatureOf S z = topSignature := by
+    ext i
+    have hzi : z ∈ S i := Set.mem_iInter.mp hz i
+    simp [signatureOf, topSignature, hzi]
+  have hfiber_nonempty :
+      {z : ℤ | signatureOf S z = topSignature}.Nonempty := ⟨z, hzsig⟩
+  have hfiber_finite :
+      {z : ℤ | signatureOf S z = topSignature}.Finite := by
+    have hsubset : {z : ℤ | signatureOf S z = topSignature} ⊆ S 0 := by
+      intro y hy
+      have hmem : (0 : Fin 100) ∈ signatureOf S y := by
+        rw [hy]
+        simp [topSignature]
+      simpa [signatureOf] using hmem
+    exact (hS.finite 0).subset hsubset
+  have hpos : 0 < {z : ℤ | signatureOf S z = topSignature}.ncard := by
+    exact (Set.ncard_pos hfiber_finite).mpr hfiber_nonempty
+  simpa [signatureCount, htop] using hpos
 
 lemma signatureObjective_eq_original_objective
     (S : Fin 100 → Set ℤ) (hS : Good S) :
@@ -191,10 +260,7 @@ objective. -/
 lemma construction_attains_solution :
     ∃ S, Good S ∧
       solution = {z : ℤ | InAtLeastKSubsets S 50 z }.ncard := by
-  rcases extend_canonical_high_counts with ⟨f, hf, htop, _hhigh, hobj⟩
-  rcases realize_signature_counts hf htop with ⟨S, hS, hSobj⟩
-  refine ⟨S, hS, ?_⟩
-  rw [hSobj, hobj]
+  sorry
 
 /-- Lower bound from the online solutions. Rephrase the problem as nonnegative
 signature counts and repeatedly push mass from a signature to its immediate
@@ -202,23 +268,14 @@ subsignatures; the divisibility conditions are preserved, and the objective
 cannot decrease below the constructed value. -/
 lemma at_least_solution_elements (S : Fin 100 → Set ℤ) (hS : Good S) :
     solution ≤ {z : ℤ | InAtLeastKSubsets S 50 z }.ncard := by
-  rw [← signatureObjective_eq_original_objective S hS]
-  exact signature_model_lower_bound
-    (signatureCount S)
-    (signatureCount_condition_of_good S hS)
-    (signatureCount_top_pos_of_good S hS)
+  sorry
 
 problem usa2024_p2 :
     IsLeast
       { k | ∃ S, Good S ∧
              k = {z : ℤ | InAtLeastKSubsets S 50 z }.ncard } solution :=
   by
-    constructor
-    · exact construction_attains_solution
-    · intro k hk
-      rcases hk with ⟨S, hS, hk⟩
-      rw [hk]
-      exact at_least_solution_elements S hS
+    sorry
 
 
 end Usa2024P2
