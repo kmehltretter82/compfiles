@@ -153,6 +153,73 @@ def pushDown (f : Signature → ℕ) (v : Signature) : Signature → ℕ :=
     else if w ⊆ v ∧ w.card + 1 = v.card then f w + 1
     else f w
 
+lemma immediate_supersets_count {u v : Signature} (huv : u ⊆ v) :
+    (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+        if u ⊆ w ∧ w ⊆ v ∧ w.card + 1 = v.card then 1 else 0) =
+      v.card - u.card := by
+  classical
+  let missing : Finset Signature := Finset.image (fun a : Fin 100 => v.erase a) (v \ u)
+  have hfilter :
+      ((Finset.univ : Finset Signature).erase v).filter
+          (fun w : Signature => u ⊆ w ∧ w ⊆ v ∧ w.card + 1 = v.card)
+        = missing := by
+    ext w
+    constructor
+    · intro hw
+      have hw' := Finset.mem_filter.mp hw
+      have huw : u ⊆ w := hw'.2.1
+      have hwv : w ⊆ v := hw'.2.2.1
+      have hwcard : w.card + 1 = v.card := hw'.2.2.2
+      have hlt : w.card < v.card := by omega
+      rcases Finset.exists_mem_notMem_of_card_lt_card hlt with ⟨a, hav, haw⟩
+      have hau : a ∉ u := fun ha => haw (huw ha)
+      refine Finset.mem_image.mpr ⟨a, ?_, ?_⟩
+      · exact Finset.mem_sdiff.mpr ⟨hav, hau⟩
+      · symm
+        apply Finset.eq_of_subset_of_card_le
+        · intro x hx
+          have hxv : x ∈ v := hwv hx
+          have hxa : x ≠ a := by
+            intro hxa
+            exact haw (by simpa [hxa] using hx)
+          exact Finset.mem_erase.mpr ⟨hxa, hxv⟩
+        · rw [Finset.card_erase_of_mem hav]
+          omega
+    · intro hw
+      rcases Finset.mem_image.mp hw with ⟨a, ha, rfl⟩
+      have hav : a ∈ v := (Finset.mem_sdiff.mp ha).1
+      have hau : a ∉ u := (Finset.mem_sdiff.mp ha).2
+      have hvcpos : 0 < v.card := Finset.card_pos.mpr ⟨a, hav⟩
+      refine Finset.mem_filter.mpr ⟨?_, ?_⟩
+      · refine Finset.mem_erase.mpr ⟨?_, Finset.mem_univ _⟩
+        intro h
+        have : a ∉ v.erase a := by simp
+        exact this (by rw [h]; exact hav)
+      · refine ⟨?_, ?_, ?_⟩
+        · intro x hx
+          exact Finset.mem_erase.mpr ⟨fun hxa => hau (by simpa [hxa] using hx), huv hx⟩
+        · intro x hx
+          exact (Finset.mem_erase.mp hx).2
+        · rw [Finset.card_erase_of_mem hav]
+          omega
+  rw [← Finset.card_filter
+    (fun w : Signature => u ⊆ w ∧ w ⊆ v ∧ w.card + 1 = v.card)
+    ((Finset.univ : Finset Signature).erase v)]
+  rw [hfilter]
+  have himage_card : missing.card = (v \ u).card := by
+    apply Finset.card_image_of_injOn
+    intro a ha b hb hab
+    change v.erase a = v.erase b at hab
+    by_contra hne
+    have hmem : a ∈ v.erase b := by
+      exact Finset.mem_erase.mpr ⟨hne, (Finset.mem_sdiff.mp ha).1⟩
+    have hmem' : a ∈ v.erase a := by
+      rw [hab]
+      exact hmem
+    have : a ∉ v.erase a := by simp
+    exact this hmem'
+  rw [himage_card, Finset.card_sdiff_of_subset huv]
+
 lemma canonicalHighCount_valid_on_high :
     ∀ u : Signature, 50 ≤ u.card →
       u.card ∣ SignatureIntersectionCount canonicalHighCount u := by
@@ -171,7 +238,74 @@ lemma pushDown_preserves_condition {f : Signature → ℕ} {v : Signature}
     SignatureCountCondition (pushDown f v) := by
   -- For a fixed nonempty `u`, only terms with `u ⊆ v` change.  In that case
   -- the net change is `-|u|`; otherwise the net change is zero.
-  sorry
+  classical
+  intro u hu
+  by_cases huv : u ⊆ v
+  · have hucard_le_vcard : u.card ≤ v.card := Finset.card_le_card huv
+    have hchange :
+        SignatureIntersectionCount (pushDown f v) u + u.card =
+          SignatureIntersectionCount f u := by
+      rw [SignatureIntersectionCount, SignatureIntersectionCount]
+      rw [← Finset.sum_erase_add (Finset.univ : Finset Signature)
+        (fun w => if u ⊆ w then pushDown f v w else 0) (Finset.mem_univ v)]
+      rw [← Finset.sum_erase_add (Finset.univ : Finset Signature)
+        (fun w => if u ⊆ w then f w else 0) (Finset.mem_univ v)]
+      have herase :
+          (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              if u ⊆ w then pushDown f v w else 0)
+            =
+          (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              if u ⊆ w then f w else 0) + (v.card - u.card) := by
+        calc
+          (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              if u ⊆ w then pushDown f v w else 0)
+              =
+            (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              ((if u ⊆ w then f w else 0)
+                + (if u ⊆ w ∧ w ⊆ v ∧ w.card + 1 = v.card then 1 else 0))) := by
+              refine Finset.sum_congr rfl ?_
+              intro w hw
+              have hwne : w ≠ v := (Finset.mem_erase.mp hw).1
+              by_cases huw : u ⊆ w
+              · by_cases himm : w ⊆ v ∧ w.card + 1 = v.card
+                · simp [pushDown, hwne, huw, himm]
+                · simp [pushDown, hwne, huw, himm]
+              · have hnot : ¬(u ⊆ w ∧ w ⊆ v ∧ w.card + 1 = v.card) := by
+                  exact fun h => huw h.1
+                simp [huw]
+          _ =
+            (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              if u ⊆ w then f w else 0) +
+            (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              if u ⊆ w ∧ w ⊆ v ∧ w.card + 1 = v.card then 1 else 0) := by
+              rw [Finset.sum_add_distrib]
+          _ =
+            (∑ w ∈ (Finset.univ : Finset Signature).erase v,
+              if u ⊆ w then f w else 0) + (v.card - u.card) := by
+              rw [immediate_supersets_count huv]
+      have hpush_v : pushDown f v v = f v - v.card := by simp [pushDown]
+      simp [huv, hpush_v]
+      rw [herase]
+      omega
+    have hold : u.card ∣ SignatureIntersectionCount f u := hf u hu
+    rw [← hchange] at hold
+    exact (Nat.dvd_add_self_right).mp hold
+  · have hchange :
+        SignatureIntersectionCount (pushDown f v) u = SignatureIntersectionCount f u := by
+      rw [SignatureIntersectionCount, SignatureIntersectionCount]
+      refine Finset.sum_congr rfl ?_
+      intro w _
+      by_cases huw : u ⊆ w
+      · have hwne : w ≠ v := by
+          intro hwv
+          exact huv (by simpa [hwv] using huw)
+        have hnot : ¬(w ⊆ v ∧ w.card + 1 = v.card) := by
+          intro h
+          exact huv (fun i hi => h.1 (huw hi))
+        simp [pushDown, huw, hwne, hnot]
+      · simp [huw]
+    rw [hchange]
+    exact hf u hu
 
 lemma pushDown_preserves_objective_of_large {f : Signature → ℕ} {v : Signature}
     (hv : 50 < v.card) (hfv : v.card ≤ f v) :
@@ -368,7 +502,9 @@ lemma signatureCount_condition_of_good (S : Fin 100 → Set ℤ) (hS : Good S) :
   intro u hu
   rcases hS.card u hu with ⟨k, hk⟩
   refine ⟨k, ?_⟩
+  rw [mul_comm k u.card] at hk
   rw [← hk]
+  symm
   have hinter_eq :
       (⋂ i ∈ u, S i) = {z : ℤ | u ⊆ signatureOf S z} := by
     ext z
@@ -440,9 +576,10 @@ lemma signatureObjective_eq_original_objective
   have hsig_card :
       ∀ z : ℤ, {i : Fin 100 | z ∈ S i}.ncard = (signatureOf S z).card := by
     intro z
-    rw [Set.ncard_eq_toFinset_card]
-    · simp [signatureOf]
-    · exact Set.finite_univ.subset (by intro i _; simp)
+    have hfin : {i : Fin 100 | z ∈ S i}.Finite :=
+      Set.finite_univ.subset (by intro i _; simp)
+    rw [Set.ncard_eq_toFinset_card _ hfin]
+    simp [signatureOf]
   have hobj_set :
       {z : ℤ | InAtLeastKSubsets S 50 z}
         = {z : ℤ | 50 ≤ (signatureOf S z).card} := by
@@ -453,8 +590,9 @@ lemma signatureObjective_eq_original_objective
     refine hunion_finite.subset ?_
     intro z hz
     have hpos : 0 < {i : Fin 100 | z ∈ S i}.ncard := by
+      have hsigpos : 0 < (signatureOf S z).card := lt_of_lt_of_le (by norm_num) hz
       rw [hsig_card z]
-      omega
+      exact hsigpos
     have hnonempty : {i : Fin 100 | z ∈ S i}.Nonempty := by
       exact (Set.ncard_pos (Set.finite_univ.subset (by intro i _; simp))).mp hpos
     rcases hnonempty with ⟨i, hi⟩
@@ -469,8 +607,8 @@ lemma signatureObjective_eq_original_objective
           · have hvnonempty : v.Nonempty := by
               cases v.eq_empty_or_nonempty with
               | inl hempty =>
-                  rw [hempty] at hv
-                  simp at hv
+                  exfalso
+                  simpa [hempty] using hv
               | inr h => exact h
             simp [hv, signatureCount, hvnonempty]
           · simp [hv]
