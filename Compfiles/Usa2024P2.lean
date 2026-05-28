@@ -206,7 +206,6 @@ lemma pushDown_preserves_objective_of_large {f : Signature → ℕ} {v : Signatu
 lemma pushDown_decreases_objective_at_middle {f : Signature → ℕ} {v : Signature}
     (hv : v.card = 50) (hfv : v.card ≤ f v) :
     SignatureObjective (pushDown f v) + 50 = SignatureObjective f := by
-  /-
   classical
   have hv_le : 50 ≤ v.card := by omega
   have hfv50 : 50 ≤ f v := by omega
@@ -257,8 +256,6 @@ lemma pushDown_decreases_objective_at_middle {f : Signature → ℕ} {v : Signat
           exact Finset.sum_erase_add (Finset.univ : Finset Signature)
             (fun w ↦ if 50 ≤ w.card then f w else 0)
             (Finset.mem_univ v)
-  -/
-  sorry
 
 /-- The downward-induction construction of the lower-rank counts. This packages
 the easy half of the proof in the signature-count language. -/
@@ -300,7 +297,6 @@ lemma signatureCount_condition_of_good (S : Fin 100 → Set ℤ) (hS : Good S) :
 
 lemma signatureCount_top_pos_of_good (S : Fin 100 → Set ℤ) (hS : Good S) :
     0 < signatureCount S topSignature := by
-  /-
   classical
   have htop : topSignature.Nonempty := by
     exact ⟨0, by simp [topSignature]⟩
@@ -325,8 +321,6 @@ lemma signatureCount_top_pos_of_good (S : Fin 100 → Set ℤ) (hS : Good S) :
   have hpos : 0 < {z : ℤ | signatureOf S z = topSignature}.ncard := by
     exact (Set.ncard_pos hfiber_finite).mpr hfiber_nonempty
   simpa [signatureCount, htop] using hpos
-  -/
-  sorry
 
 lemma signatureObjective_eq_original_objective
     (S : Fin 100 → Set ℤ) (hS : Good S) :
@@ -360,7 +354,10 @@ objective. -/
 lemma construction_attains_solution :
     ∃ S, Good S ∧
       solution = {z : ℤ | InAtLeastKSubsets S 50 z }.ncard := by
-  sorry
+  rcases extend_canonical_high_counts with ⟨f, hf, htop, _hhigh, hobj⟩
+  rcases realize_signature_counts hf htop with ⟨S, hS, hSobj⟩
+  refine ⟨S, hS, ?_⟩
+  rw [hSobj, hobj]
 
 /-- Lower bound from the online solutions. Rephrase the problem as nonnegative
 signature counts and repeatedly push mass from a signature to its immediate
@@ -368,14 +365,23 @@ subsignatures; the divisibility conditions are preserved, and the objective
 cannot decrease below the constructed value. -/
 lemma at_least_solution_elements (S : Fin 100 → Set ℤ) (hS : Good S) :
     solution ≤ {z : ℤ | InAtLeastKSubsets S 50 z }.ncard := by
-  sorry
+  rw [← signatureObjective_eq_original_objective S hS]
+  exact signature_model_lower_bound
+    (signatureCount S)
+    (signatureCount_condition_of_good S hS)
+    (signatureCount_top_pos_of_good S hS)
 
 problem usa2024_p2 :
     IsLeast
       { k | ∃ S, Good S ∧
              k = {z : ℤ | InAtLeastKSubsets S 50 z }.ncard } solution :=
   by
-    sorry
+    constructor
+    · exact construction_attains_solution
+    · intro k hk
+      rcases hk with ⟨S, hS, hk⟩
+      rw [hk]
+      exact at_least_solution_elements S hS
 
 
 end Usa2024P2
