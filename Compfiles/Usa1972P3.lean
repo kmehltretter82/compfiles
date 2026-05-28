@@ -47,10 +47,7 @@ def allDigitsEquiv {n : ℕ} (P : Digit → Prop) [DecidablePred P] :
 lemma card_all_digits {n : ℕ} (P : Digit → Prop) [DecidablePred P] {k : ℕ}
     (hP : Fintype.card {d : Digit // P d} = k) :
     Fintype.card {s : DigitSeq n // ∀ i, P (s i)} = k ^ n := by
-  rw [Fintype.card_congr (allDigitsEquiv (n := n) P)]
-  rw [Fintype.card_fun]
-  rw [hP]
-  simp
+  simpa [Fintype.card_fun, hP] using Fintype.card_congr (allDigitsEquiv (n := n) P)
 
 lemma digit_dvd_five_iff (d : Digit) : 5 ∣ to_nat_digit d ↔ to_nat_digit d = 5 := by
   fin_cases d <;> norm_num [to_nat_digit]
@@ -97,16 +94,11 @@ lemma card_all_noEven (n : ℕ) :
 
 lemma card_all_noFive_noEven (n : ℕ) :
     Fintype.card {s : DigitSeq n // NoFive s ∧ NoEven s} = 4 ^ n := by
-  let e : {s : DigitSeq n // NoFive s ∧ NoEven s} ≃
-      {s : DigitSeq n // ∀ i, to_nat_digit (s i) ≠ 5 ∧ ¬ Even (to_nat_digit (s i))} :=
-    { toFun := fun s => ⟨s.1, fun i => ⟨s.2.1 i, s.2.2 i⟩⟩
-      invFun := fun s => ⟨s.1, ⟨fun i => (s.2 i).1, fun i => (s.2 i).2⟩⟩
-      left_inv := by intro s; rfl
-      right_inv := by intro s; rfl }
-  rw [Fintype.card_congr e]
-  exact card_all_digits (fun d => to_nat_digit d ≠ 5 ∧ ¬ Even (to_nat_digit d))
-    card_digits_noFive_noEven
+  simpa [NoFive, NoEven, forall_and] using
+    (card_all_digits (n := n)
+      (fun d => to_nat_digit d ≠ 5 ∧ ¬ Even (to_nat_digit d)) card_digits_noFive_noEven)
 
+-- Inclusion-exclusion on the bad events.
 lemma card_good_balance (n : ℕ) :
     {s : DigitSeq n | is_good_seq s}.ncard + 8 ^ n + 5 ^ n = 9 ^ n + 4 ^ n := by
   classical
@@ -140,6 +132,10 @@ lemma card_good_balance (n : ℕ) :
   rw [hUcard] at hcompl
   omega
 
+lemma ennreal_eq_sub_sub_of_add_add_eq {a b c d : ENNReal}
+    (hb : b ≠ ⊤) (hc : c ≠ ⊤) (h : (a + c) + b = d) : a = d - b - c := by
+  exact ENNReal.eq_sub_of_add_eq hc (ENNReal.eq_sub_of_add_eq hb h)
+
 snip end
 
 noncomputable determine solution (n : ℕ) : ENNReal :=
@@ -148,40 +144,30 @@ noncomputable determine solution (n : ℕ) : ENNReal :=
 problem usa1972_p3 (n : ℕ) (_hn : 1 < n) :
   (unifDistN n).toOuterMeasure good_seqs = solution n := by
   classical
-  have hcard := card_good_balance n
-  rw [unifDistN, PMF.toOuterMeasure_uniformOfFintype_apply]
-  simp [solution, good_seqs]
-  have hcard' :
+  have hcount := card_good_balance n
+  have hcard :
       Fintype.card {x : DigitSeq n // is_good_seq x} + 8 ^ n + 5 ^ n =
         9 ^ n + 4 ^ n := by
-    rw [Set.ncard_eq_toFinset_card] at hcard
+    rw [Set.ncard_eq_toFinset_card] at hcount
     have hgood :
         Fintype.card {x : DigitSeq n // is_good_seq x} =
           ({x : DigitSeq n | is_good_seq x} : Finset (DigitSeq n)).card :=
       Fintype.card_of_subtype _ (by intro x; simp)
-    simpa [Set.toFinset_setOf, hgood] using hcard
-  let g := Fintype.card {x : DigitSeq n // is_good_seq x}
-  have hcard_enn : ((g : ℕ) + 8 ^ n + 5 ^ n : ENNReal) = (9 ^ n + 4 ^ n : ℕ) := by
-    exact_mod_cast hcard'
+    simpa [Set.toFinset_setOf, hgood] using hcount
+  rw [unifDistN, PMF.toOuterMeasure_uniformOfFintype_apply]
+  simp [solution, good_seqs]
+  have hcard_enn :
+      ((Fintype.card {x : DigitSeq n // is_good_seq x} + 8 ^ n + 5 ^ n : ℕ) : ENNReal) =
+        (9 ^ n + 4 ^ n : ℕ) := by
+    exact_mod_cast hcard
   have hdiv := congrArg (fun x : ENNReal => x / ((9 : ENNReal) ^ n)) hcard_enn
-  simp [g, ENNReal.add_div, ENNReal.div_self] at hdiv
-  simp [div_eq_mul_inv, mul_pow, ENNReal.inv_pow] at hdiv ⊢
-  have hB : ((8 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n) ≠ ⊤ := by finiteness
-  have hC : ((5 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n) ≠ ⊤ := by finiteness
-  have hdiv' :
-      (↑(Fintype.card {x : DigitSeq n // is_good_seq x}) *
-          (9 : ENNReal)⁻¹ ^ n +
-        (5 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n) +
-          (8 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n =
-        1 + (4 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n := by
-    simpa [add_assoc, add_comm, add_left_comm] using hdiv
-  have hAC :
-      ↑(Fintype.card {x : DigitSeq n // is_good_seq x}) *
-          (9 : ENNReal)⁻¹ ^ n +
-        (5 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n =
-          (1 + (4 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n) -
-            (8 : ENNReal) ^ n * (9 : ENNReal)⁻¹ ^ n :=
-    ENNReal.eq_sub_of_add_eq hB hdiv'
-  exact ENNReal.eq_sub_of_add_eq hC hAC
+  simp [ENNReal.add_div, ENNReal.div_self] at hdiv
+  -- Convert counts to probabilities.
+  have hbalance :
+      (↑(Fintype.card {x : DigitSeq n // is_good_seq x}) / (9 : ENNReal) ^ n +
+          (5 / 9 : ENNReal) ^ n) + (8 / 9 : ENNReal) ^ n =
+        1 + (4 / 9 : ENNReal) ^ n := by
+    simpa [div_eq_mul_inv, mul_pow, ENNReal.inv_pow, add_assoc, add_comm, add_left_comm] using hdiv
+  exact ennreal_eq_sub_sub_of_add_add_eq (by finiteness) (by finiteness) hbalance
 
 end Usa1972P3
