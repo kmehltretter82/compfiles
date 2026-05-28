@@ -1005,18 +1005,18 @@ noncomputable def encodePoint (f : Signature → ℕ) :
 
 noncomputable def realizedFamily (f : Signature → ℕ)
     (i : Fin 100) : Set ℤ :=
-  Set.range fun x : {x : RealizedPoint f // i ∈ x.1.1} =>
+  Set.range fun x : {x : RealizedPoint f // i ∈ x.fst} =>
     encodePoint f x.1
 
 lemma realizedFamily_finite (f : Signature → ℕ) (i : Fin 100) :
     (realizedFamily f i).Finite := by
   classical
-  exact Set.finite_range fun x : {x : RealizedPoint f // i ∈ x.1.1} =>
+  exact Set.finite_range fun x : {x : RealizedPoint f // i ∈ x.fst} =>
     encodePoint f x.1
 
 lemma mem_realizedFamily_iff
     {f : Signature → ℕ} {i : Fin 100} {x : RealizedPoint f} :
-    encodePoint f x ∈ realizedFamily f i ↔ i ∈ x.1 := by
+    encodePoint f x ∈ realizedFamily f i ↔ i ∈ x.fst := by
   constructor
   · intro hx
     rcases hx with ⟨y, hy⟩
@@ -1027,11 +1027,11 @@ lemma mem_realizedFamily_iff
 
 lemma realizedPoint_subtype_card
     (f : Signature → ℕ) (p : Signature → Prop) [DecidablePred p] :
-    Nat.card {x : RealizedPoint f // p x.1} =
+    Nat.card {x : RealizedPoint f // p x.fst} =
       ∑ v : Signature, if p v then f v else 0 := by
   classical
   let e :
-      {x : RealizedPoint f // p x.1} ≃
+      {x : RealizedPoint f // p x.fst} ≃
         Sigma (fun v : {v : Signature // p v} => Fin (f v.1)) :=
     { toFun := fun x => ⟨⟨x.1.1, x.2⟩, x.1.2⟩
       invFun := fun x => ⟨⟨x.1.1, x.2⟩, x.1.2⟩
@@ -1048,8 +1048,8 @@ lemma realizedPoint_subtype_card
           cases v
           rfl }
   calc
-    Nat.card {x : RealizedPoint f // p x.1}
-        = Fintype.card {x : RealizedPoint f // p x.1} := Nat.card_eq_fintype_card
+    Nat.card {x : RealizedPoint f // p x.fst}
+        = Fintype.card {x : RealizedPoint f // p x.fst} := Nat.card_eq_fintype_card
     _ = Fintype.card (Sigma (fun v : {v : Signature // p v} => Fin (f v.1))) :=
           Fintype.card_congr e
     _ = ∑ v : {v : Signature // p v}, f v.1 := by
@@ -1065,7 +1065,7 @@ lemma realizedPoint_subtype_card
 lemma realized_intersection_eq
     {f : Signature → ℕ} (u : Signature) (hu : u.Nonempty) :
     (⋂ i ∈ u, realizedFamily f i) =
-      Set.range fun x : {x : RealizedPoint f // u ⊆ x.1.1} =>
+      Set.range fun x : {x : RealizedPoint f // u ⊆ x.fst} =>
         encodePoint f x.1 := by
   classical
   ext z
@@ -1074,12 +1074,11 @@ lemma realized_intersection_eq
     rcases hu with ⟨i0, hi0⟩
     have hzi0 : z ∈ realizedFamily f i0 := Set.mem_iInter₂.mp hz i0 hi0
     rcases hzi0 with ⟨x, hx⟩
-    have hsub : u ⊆ x.1.1 := by
+    have hsub : u ⊆ x.1.fst := by
       intro i hi
       have hzi : z ∈ realizedFamily f i := Set.mem_iInter₂.mp hz i hi
       have henc : encodePoint f x.1 ∈ realizedFamily f i := by
-        rw [hx]
-        exact hzi
+        simpa [hx] using hzi
       exact (mem_realizedFamily_iff (x := x.1)).mp henc
     exact ⟨⟨x.1, hsub⟩, hx⟩
   · intro hz
@@ -1097,12 +1096,11 @@ lemma realized_intersection_ncard
   rw [Set.ncard_range_of_injective]
   · rw [realizedPoint_subtype_card, SignatureIntersectionCount]
   · intro x y hxy
-    ext
-    exact (encodePoint f).injective hxy
+    exact Subtype.ext ((encodePoint f).injective hxy)
 
 lemma realized_membership_ncard
     {f : Signature → ℕ} (x : RealizedPoint f) :
-    {i : Fin 100 | encodePoint f x ∈ realizedFamily f i}.ncard = x.1.card := by
+    {i : Fin 100 | encodePoint f x ∈ realizedFamily f i}.ncard = x.fst.card := by
   classical
   have hfin : {i : Fin 100 | encodePoint f x ∈ realizedFamily f i}.Finite :=
     Set.finite_univ.subset (by intro i _; simp)
@@ -1120,7 +1118,7 @@ lemma realized_objective_ncard
   classical
   have hobj_eq :
       {z : ℤ | InAtLeastKSubsets (realizedFamily f) 50 z} =
-        Set.range fun x : {x : RealizedPoint f // 50 ≤ x.1.1.card} =>
+        Set.range fun x : {x : RealizedPoint f // 50 ≤ x.fst.card} =>
           encodePoint f x.1 := by
     ext z
     constructor
@@ -1131,21 +1129,24 @@ lemma realized_objective_ncard
         lt_of_lt_of_le (by norm_num) hz
       rcases (Set.ncard_pos hfin).mp hpos with ⟨i, hi⟩
       rcases hi with ⟨x, hx⟩
-      have hhigh : 50 ≤ x.1.1.card := by
+      have hhigh : 50 ≤ x.1.fst.card := by
         rw [← realized_membership_ncard x.1]
-        rwa [hx]
+        simpa [hx] using hz
       exact ⟨⟨x.1, hhigh⟩, hx⟩
     · intro hz
       rcases hz with ⟨x, hx⟩
       rw [← hx]
-      rw [InAtLeastKSubsets, realized_membership_ncard x.1]
+      change 50 ≤ {i : Fin 100 | encodePoint f x.1 ∈ realizedFamily f i}.ncard
+      rw [realized_membership_ncard x.1]
       exact x.2
   rw [hobj_eq]
   rw [Set.ncard_range_of_injective]
-  · rw [realizedPoint_subtype_card, SignatureObjective]
+  · change Nat.card {x : RealizedPoint f // (fun v : Signature => 50 ≤ v.card) x.fst} =
+      SignatureObjective f
+    rw [SignatureObjective]
+    exact realizedPoint_subtype_card f (fun v : Signature => 50 ≤ v.card)
   · intro x y hxy
-    ext
-    exact (encodePoint f).injective hxy
+    exact Subtype.ext ((encodePoint f).injective hxy)
 
 /-- Any finite nonempty-signature count model can be realized by actual finite
 sets of integers. -/
@@ -1159,10 +1160,12 @@ lemma realize_signature_counts
   refine ⟨realizedFamily f, ?_, realized_objective_ncard⟩
   refine ⟨realizedFamily_finite f, ?_, ?_⟩
   · let x : RealizedPoint f := ⟨topSignature, ⟨0, htop⟩⟩
-    apply Set.ne_empty_iff_nonempty.mpr
+    apply Set.nonempty_iff_ne_empty.mp
     refine ⟨encodePoint f x, ?_⟩
     exact Set.mem_iInter.mpr fun i =>
-      (mem_realizedFamily_iff (x := x)).mpr (by simp [topSignature])
+      (mem_realizedFamily_iff (x := x)).mpr (by
+        show i ∈ topSignature
+        simp [topSignature])
   · intro T hT
     rcases hf T hT with ⟨k, hk⟩
     refine ⟨k, ?_⟩
