@@ -48,10 +48,10 @@ def topSignature : Signature := Finset.univ
 /-- The membership signature of an integer with respect to the family `S`. -/
 noncomputable def signatureOf (S : Fin 100 → Set ℤ) (z : ℤ) : Signature := by
   classical
-  exact Finset.univ.filter fun i ↦ z ∈ S i
+  exact Finset.univ.filter (fun i ↦ z ∈ S i)
 
 lemma ncard_preimage_eq_sum_fibers
-    {α β : Type} [Fintype β] [DecidableEq β]
+    {α β : Type} [Fintype β]
     (g : α → β) (p : β → Prop) [DecidablePred p]
     (hfin : {a : α | p (g a)}.Finite) :
     {a : α | p (g a)}.ncard =
@@ -61,7 +61,7 @@ lemma ncard_preimage_eq_sum_fibers
       Sigma (fun b : ↑({b : β | p b}) => ↑({a : α | g a = b.1})) :=
     { toFun := fun a => ⟨⟨g a.1, a.2⟩, ⟨a.1, rfl⟩⟩
       invFun := fun x => ⟨x.2.1, by
-        show p (g x.2.1)
+        change p (g x.2.1)
         rw [x.2.2]
         exact x.1.2⟩
       left_inv := by
@@ -79,7 +79,7 @@ lemma ncard_preimage_eq_sum_fibers
     intro b
     exact hfin.subset (by
       intro a ha
-      show p (g a)
+      change p (g a)
       rw [ha]
       exact b.2)
   letI := hfin.fintype
@@ -126,8 +126,8 @@ lemma ncard_preimage_eq_sum_fibers
 set indexed by `u`, where `f v` is the number of elements with exact
 membership signature `v`. It is left abstract here to avoid constructing
 the `2^100`-element finset of all signatures in the intermediate file. -/
-noncomputable def SignatureIntersectionCount (f : Signature → ℕ) (u : Signature) : ℕ := by
-  exact ∑ v : Signature, if u ⊆ v then f v else 0
+noncomputable def SignatureIntersectionCount (f : Signature → ℕ) (u : Signature) : ℕ :=
+  ∑ v : Signature, if u ⊆ v then f v else 0
 
 /-- The finite signature-count formulation of the problem. Only nonempty
 signatures matter, since integers outside all `S i` have the empty signature
@@ -138,8 +138,8 @@ def SignatureCountCondition (f : Signature → ℕ) : Prop :=
 /-- The quantity to be minimized in the signature-count formulation.
 Mathematically this is `∑ v, if 50 ≤ |v| then f v else 0`; it is abstract
 for the same reason as `SignatureIntersectionCount`. -/
-noncomputable def SignatureObjective (f : Signature → ℕ) : ℕ := by
-  exact ∑ v : Signature, if 50 ≤ v.card then f v else 0
+noncomputable def SignatureObjective (f : Signature → ℕ) : ℕ :=
+  ∑ v : Signature, if 50 ≤ v.card then f v else 0
 
 /-- The high-rank part of the greedy construction: for `|v| ≥ 50`, assign
 `2 |v| - 100` elements to signature `v`. Lower ranks are filled later by
@@ -435,7 +435,7 @@ lemma sum_signatures_by_card (F : ℕ → ℕ) :
       ∑ r ∈ Finset.range 101, F r * Nat.choose 100 r := by
   simpa using (sum_supersets_by_rank (∅ : Signature) F)
 
-lemma canonicalHighCount_objective_rank_sum_as_tail :
+lemma high_rank_objective_sum_eq_tail :
     (∑ r ∈ Finset.range 101,
         (if 50 ≤ r then 2 * r - 100 else 0) * Nat.choose 100 r) =
       ∑ j ∈ Finset.range 51,
@@ -455,7 +455,7 @@ lemma canonicalHighCount_objective_rank_sum_as_tail :
   intro j _hj
   simp [F]
 
-lemma canonicalHighCount_objective_summand_int {r : ℕ}
+lemma high_rank_objective_summand_int {r : ℕ}
     (hr50 : 50 ≤ r) (hr100 : r ≤ 100) :
     (((2 * r - 100) * Nat.choose 100 r : ℕ) : ℤ) =
       100 * ((Nat.choose 99 (r - 1) : ℤ) - Nat.choose 99 r) := by
@@ -485,7 +485,7 @@ lemma canonicalHighCount_objective_summand_int {r : ℕ}
           rw [← hmul_left, ← hmul_right]
           ring
 
-lemma canonicalHighCount_objective_telescope_int (n : ℕ) :
+lemma high_rank_choose_telescope_int (n : ℕ) :
     (∑ j ∈ Finset.range (n + 1),
         (100 : ℤ) * ((Nat.choose 99 (49 + j) : ℤ) - Nat.choose 99 (50 + j))) =
       100 * ((Nat.choose 99 49 : ℤ) - Nat.choose 99 (50 + n)) := by
@@ -497,7 +497,7 @@ lemma canonicalHighCount_objective_telescope_int (n : ℕ) :
       rw [ih]
       ring_nf
 
-lemma canonicalHighCount_objective_tail_sum :
+lemma high_rank_weighted_choose_sum :
     (∑ j ∈ Finset.range 51,
         (2 * (50 + j) - 100) * Nat.choose 100 (50 + j)) =
       50 * Nat.choose 100 50 := by
@@ -517,10 +517,10 @@ lemma canonicalHighCount_objective_tail_sum :
               intro j hj
               have hjlt : j < 51 := Finset.mem_range.mp hj
               have h49 : 50 + j - 1 = 49 + j := by omega
-              rw [canonicalHighCount_objective_summand_int
+              rw [high_rank_objective_summand_int
                 (by omega : 50 ≤ 50 + j) (by omega : 50 + j ≤ 100), h49]
       _ = 100 * ((Nat.choose 99 49 : ℤ) - Nat.choose 99 (50 + 50)) := by
-              simpa using canonicalHighCount_objective_telescope_int 50
+              simpa using high_rank_choose_telescope_int 50
       _ = ((50 * Nat.choose 100 50 : ℕ) : ℤ) := by
               have hboundary :
                   100 * Nat.choose 99 49 = Nat.choose 100 50 * 50 := by
@@ -537,8 +537,8 @@ lemma canonicalHighCount_objective_rank_sum :
     (∑ r ∈ Finset.range 101,
         (if 50 ≤ r then 2 * r - 100 else 0) * Nat.choose 100 r) =
       solution := by
-  rw [canonicalHighCount_objective_rank_sum_as_tail, solution]
-  exact canonicalHighCount_objective_tail_sum
+  rw [high_rank_objective_sum_eq_tail, solution]
+  exact high_rank_weighted_choose_sum
 
 lemma canonicalHighCount_objective :
     SignatureObjective canonicalHighCount = solution := by
@@ -607,7 +607,7 @@ lemma pushDown_preserves_condition {f : Signature → ℕ} {v : Signature}
               if u ⊆ w then f w else 0) + (v.card - u.card) := by
               rw [immediate_supersets_count huv]
       have hpush_v : pushDown f v v = f v - v.card := by simp [pushDown]
-      simp [huv, hpush_v]
+      rw [if_pos huv, if_pos huv, hpush_v]
       rw [herase]
       omega
     have hold : u.card ∣ SignatureIntersectionCount f u := hf u hu
@@ -1133,20 +1133,7 @@ lemma realizedPoint_subtype_card
   let e :
       {x : RealizedPoint f // p x.fst} ≃
         Sigma (fun v : {v : Signature // p v} => Fin (f v.1)) :=
-    { toFun := fun x => ⟨⟨x.1.1, x.2⟩, x.1.2⟩
-      invFun := fun x => ⟨⟨x.1.1, x.2⟩, x.1.2⟩
-      left_inv := by
-        intro x
-        cases x with
-        | mk x hx =>
-          cases x
-          rfl
-      right_inv := by
-        intro x
-        cases x with
-        | mk v j =>
-          cases v
-          rfl }
+    Equiv.subtypeSigmaEquiv (fun v : Signature => Fin (f v)) p
   calc
     Nat.card {x : RealizedPoint f // p x.fst}
         = Fintype.card {x : RealizedPoint f // p x.fst} := Nat.card_eq_fintype_card
@@ -1264,7 +1251,7 @@ lemma realize_signature_counts
     refine ⟨encodePoint f x, ?_⟩
     exact Set.mem_iInter.mpr fun i =>
       (mem_realizedFamily_iff (x := x)).mpr (by
-        show i ∈ topSignature
+        change i ∈ topSignature
         simp [topSignature])
   · intro T hT
     rcases hf T hT with ⟨k, hk⟩
@@ -1443,8 +1430,10 @@ lemma iterate_pushDown_self (f : Signature → ℕ) (v : Signature) (n : ℕ) :
   | zero => simp [Nat.iterate]
   | succ n ih =>
       rw [Function.iterate_succ']
-      simp [pushDown, ih]
-      rw [Nat.sub_sub]
+      simp only [Function.comp_apply]
+      rw [show pushDown ((fun g : Signature → ℕ => pushDown g v)^[n] f) v v =
+          ((fun g : Signature → ℕ => pushDown g v)^[n] f) v - v.card by
+        simp [pushDown], ih, Nat.sub_sub]
       congr 1
       ring
 
