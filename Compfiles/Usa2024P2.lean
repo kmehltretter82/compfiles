@@ -177,6 +177,104 @@ lemma superset_layer_card (u : Signature) (j : ℕ) :
   congr 1
   omega
 
+def supersetLayer (u : Signature) (j : ℕ) : Finset Signature :=
+  (Finset.univ : Finset Signature).filter
+    (fun v : Signature => u ⊆ v ∧ v.card = u.card + j)
+
+lemma mem_supersetLayer {u v : Signature} {j : ℕ} :
+    v ∈ supersetLayer u j ↔ u ⊆ v ∧ v.card = u.card + j := by
+  simp [supersetLayer]
+
+lemma supersetLayer_card (u : Signature) (j : ℕ) :
+    (supersetLayer u j).card = (100 - u.card).choose j := by
+  simpa [supersetLayer] using superset_layer_card u j
+
+lemma canonicalHighCount_of_superset_high
+    {u v : Signature} (hu : 50 ≤ u.card) (huv : u ⊆ v) :
+    canonicalHighCount v = 2 * v.card - 100 := by
+  have huv_card : u.card ≤ v.card := Finset.card_le_card huv
+  simp [canonicalHighCount, le_trans hu huv_card]
+
+lemma canonicalHighCount_grouped_summand
+    {a m j : ℕ} (ham : a + m = 100) (_ha : 50 ≤ a) (_hj : j ≤ m) :
+    2 * (a + j) - 100 = (a - m) + 2 * j := by
+  omega
+
+lemma sum_supersets_by_rank
+    (u : Signature) (F : ℕ → ℕ) :
+    (∑ v : Signature, if u ⊆ v then F v.card else 0) =
+      ∑ j ∈ Finset.range (100 - u.card + 1),
+        F (u.card + j) * (100 - u.card).choose j := by
+  classical
+  calc
+    (∑ v : Signature, if u ⊆ v then F v.card else 0)
+        = ∑ v ∈ (Finset.univ : Finset Signature).filter (fun v : Signature => u ⊆ v),
+            F v.card := by
+          rw [← Finset.sum_filter]
+    _ = ∑ v ∈ (Finset.univ : Finset Signature).filter (fun v : Signature => u ⊆ v),
+          ∑ j ∈ Finset.range (100 - u.card + 1),
+            if v.card = u.card + j then F v.card else 0 := by
+          refine Finset.sum_congr rfl ?_
+          intro v hv
+          rw [Finset.mem_filter] at hv
+          have huv : u ⊆ v := hv.2
+          have hcard_le : u.card ≤ v.card := Finset.card_le_card huv
+          have hv_le_100 : v.card ≤ 100 := by
+            have h := Finset.card_le_univ v
+            simpa using h
+          have hjmem : v.card - u.card ∈ Finset.range (100 - u.card + 1) := by
+            simp
+            omega
+          calc
+            F v.card =
+                (if v.card = u.card + (v.card - u.card) then F v.card else 0) := by
+                  rw [Nat.add_sub_of_le hcard_le]
+                  simp
+            _ = ∑ j ∈ Finset.range (100 - u.card + 1),
+                  if v.card = u.card + j then F v.card else 0 := by
+                  symm
+                  refine Finset.sum_eq_single (v.card - u.card) ?_ ?_
+                  · intro j hj hjne
+                    have hneq : v.card ≠ u.card + j := by
+                      intro h
+                      have : j = v.card - u.card := by omega
+                      exact hjne this
+                    simp [hneq]
+                  · intro hnot
+                    exact (hnot hjmem).elim
+    _ = ∑ j ∈ Finset.range (100 - u.card + 1),
+          ∑ v ∈ (Finset.univ : Finset Signature).filter (fun v : Signature => u ⊆ v),
+            if v.card = u.card + j then F v.card else 0 := by
+          rw [Finset.sum_comm]
+    _ = ∑ j ∈ Finset.range (100 - u.card + 1),
+          F (u.card + j) * (100 - u.card).choose j := by
+          refine Finset.sum_congr rfl ?_
+          intro j hj
+          calc
+            (∑ v ∈ (Finset.univ : Finset Signature).filter (fun v : Signature => u ⊆ v),
+                if v.card = u.card + j then F v.card else 0)
+                =
+              ∑ v ∈ ((Finset.univ : Finset Signature).filter
+                  (fun v : Signature => u ⊆ v)).filter
+                  (fun v : Signature => v.card = u.card + j),
+                F v.card := by
+                rw [← Finset.sum_filter]
+            _ = ∑ v ∈ supersetLayer u j, F v.card := by
+                have hfilter :
+                    ((Finset.univ : Finset Signature).filter
+                      (fun v : Signature => u ⊆ v)).filter
+                      (fun v : Signature => v.card = u.card + j) =
+                    supersetLayer u j := by
+                  ext v
+                  simp [supersetLayer, and_assoc]
+                rw [hfilter]
+            _ = ∑ v ∈ supersetLayer u j, F (u.card + j) := by
+                refine Finset.sum_congr rfl ?_
+                intro v hv
+                rw [(mem_supersetLayer.mp hv).2]
+            _ = F (u.card + j) * (100 - u.card).choose j := by
+                simp [Finset.sum_const, supersetLayer_card, Nat.mul_comm]
+
 /-- Group the canonical high-count intersection sum by the number of new
 indices added to `u`. If `j = v.card - u.card`, there are
 `(100 - u.card).choose j` such supersignatures, and each contributes
@@ -186,13 +284,18 @@ lemma SignatureIntersectionCount_canonicalHighCount_grouped
     SignatureIntersectionCount canonicalHighCount u =
       ∑ j ∈ Finset.range (100 - u.card + 1),
         (2 * (u.card + j) - 100) * (100 - u.card).choose j := by
-  -- Proof plan:
-  -- rewrite `SignatureIntersectionCount` as a sum over supersets of `u`.
-  -- Since `hu : 50 ≤ u.card`, every superset is also high, so
-  -- `canonicalHighCount v = 2 * v.card - 100`.
-  -- Partition the supersets by the rank difference
-  -- `j = v.card - u.card`, and use `superset_layer_card` for each layer.
-  sorry
+  rw [SignatureIntersectionCount]
+  calc
+    (∑ v : Signature, if u ⊆ v then canonicalHighCount v else 0)
+        = ∑ v : Signature, if u ⊆ v then 2 * v.card - 100 else 0 := by
+          refine Finset.sum_congr rfl ?_
+          intro v _
+          by_cases huv : u ⊆ v
+          · rw [if_pos huv, if_pos huv, canonicalHighCount_of_superset_high hu huv]
+          · simp [huv]
+    _ = ∑ j ∈ Finset.range (100 - u.card + 1),
+          (2 * (u.card + j) - 100) * (100 - u.card).choose j := by
+          exact sum_supersets_by_rank u (fun r => 2 * r - 100)
 
 /-- The binomial arithmetic left after grouping by rank. This is the identity
 `∑_j (2(a+j)-100) C(m,j) = a 2^m`, under `a + m = 100`. -/
@@ -201,12 +304,51 @@ lemma canonicalHighCount_grouped_sum_eq {a m : ℕ}
     (∑ j ∈ Finset.range (m + 1),
         (2 * (a + j) - 100) * m.choose j) =
       a * 2 ^ m := by
-  -- Proof plan:
-  -- use `Nat.sum_range_choose m` and `Nat.sum_range_mul_choose m`.
-  -- Split on `m = 0`; in the positive case rewrite `2^m` as
-  -- `2 * 2^(m - 1)`. The assumptions imply `m ≤ a`, so the natural-number
-  -- subtractions in `2 * (a + j) - 100` are genuine subtractions.
-  sorry
+  have hm_le_a : m ≤ a := by omega
+  have hchoose := Nat.sum_range_choose m
+  have hmulchoose := Nat.sum_range_mul_choose m
+  calc
+    (∑ j ∈ Finset.range (m + 1), (2 * (a + j) - 100) * m.choose j)
+        = ∑ j ∈ Finset.range (m + 1), ((a - m) + 2 * j) * m.choose j := by
+          refine Finset.sum_congr rfl ?_
+          intro j hj
+          have hjle : j ≤ m := Nat.le_of_lt_succ (Finset.mem_range.mp hj)
+          rw [canonicalHighCount_grouped_summand ham ha hjle]
+    _ = (∑ j ∈ Finset.range (m + 1),
+          ((a - m) * m.choose j + (2 * j) * m.choose j)) := by
+          refine Finset.sum_congr rfl ?_
+          intro j hj
+          ring
+    _ = (a - m) * (∑ j ∈ Finset.range (m + 1), m.choose j) +
+          ∑ j ∈ Finset.range (m + 1), (2 * j) * m.choose j := by
+          rw [Finset.sum_add_distrib]
+          congr 1
+          rw [Finset.mul_sum]
+    _ = (a - m) * (∑ j ∈ Finset.range (m + 1), m.choose j) +
+          2 * (∑ j ∈ Finset.range (m + 1), j * m.choose j) := by
+          congr 1
+          rw [Finset.mul_sum]
+          refine Finset.sum_congr rfl ?_
+          intro j hj
+          ring
+    _ = (a - m) * 2 ^ m + 2 * (m * 2 ^ (m - 1)) := by
+          rw [hchoose, hmulchoose]
+    _ = a * 2 ^ m := by
+          by_cases hm : m = 0
+          · subst hm
+            simp
+          · have hmpos : 0 < m := Nat.pos_of_ne_zero hm
+            have hpow : 2 ^ m = 2 * 2 ^ (m - 1) := by
+              calc
+                2 ^ m = 2 ^ ((m - 1) + 1) := by rw [Nat.sub_add_cancel hmpos]
+                _ = 2 ^ (m - 1) * 2 := by rw [pow_succ]
+                _ = 2 * 2 ^ (m - 1) := by ring
+            rw [hpow]
+            have hsubadd : a - m + m = a := Nat.sub_add_cancel hm_le_a
+            calc
+              (a - m) * (2 * 2 ^ (m - 1)) + 2 * (m * 2 ^ (m - 1))
+                  = ((a - m) + m) * (2 * 2 ^ (m - 1)) := by ring
+              _ = a * (2 * 2 ^ (m - 1)) := by rw [hsubadd]
 
 /-- Closed form for the canonical high-count intersection at a high signature.
 This is the form needed for divisibility by `u.card`. -/
@@ -286,11 +428,33 @@ lemma canonicalHighCount_valid_on_high :
   rw [SignatureIntersectionCount_canonicalHighCount_closed_form u hu]
   exact dvd_mul_right u.card (2 ^ (100 - u.card))
 
+lemma sum_signatures_by_card (F : ℕ → ℕ) :
+    (∑ v : Signature, F v.card) =
+      ∑ r ∈ Finset.range 101, F r * Nat.choose 100 r := by
+  simpa using (sum_supersets_by_rank (∅ : Signature) F)
+
+lemma canonicalHighCount_objective_rank_sum :
+    (∑ r ∈ Finset.range 101,
+        (if 50 ≤ r then 2 * r - 100 else 0) * Nat.choose 100 r) =
+      solution := by
+  rw [solution]
+  native_decide
+
 lemma canonicalHighCount_objective :
     SignatureObjective canonicalHighCount = solution := by
-  -- This is the identity
-  --   `∑_{r=50}^{100} (2r - 100) * C(100,r) = 50 * C(100,50)`.
-  sorry
+  rw [SignatureObjective]
+  calc
+    (∑ v : Signature, if 50 ≤ v.card then canonicalHighCount v else 0)
+        = ∑ v : Signature, if 50 ≤ v.card then 2 * v.card - 100 else 0 := by
+          refine Finset.sum_congr rfl ?_
+          intro v _
+          by_cases hv : 50 ≤ v.card
+          · simp [canonicalHighCount, hv]
+          · simp [hv]
+    _ = ∑ r ∈ Finset.range 101,
+          (if 50 ≤ r then 2 * r - 100 else 0) * Nat.choose 100 r := by
+          exact sum_signatures_by_card (fun r => if 50 ≤ r then 2 * r - 100 else 0)
+    _ = solution := canonicalHighCount_objective_rank_sum
 
 lemma pushDown_preserves_condition {f : Signature → ℕ} {v : Signature}
     (hfv : v.card ≤ f v) (hf : SignatureCountCondition f) :
@@ -742,6 +906,56 @@ lemma SignatureObjective_fillRank_of_low {k : ℕ} {f : Signature → ℕ}
   · rw [fillRank_eq_self_of_high hk hv]
   · simp [hv]
 
+noncomputable def lowerFill : ℕ → Signature → ℕ
+  | 0 => canonicalHighCount
+  | n + 1 => fillRank (49 - n) (lowerFill n)
+
+lemma lowerFill_valid
+    (n : ℕ) (hn : n ≤ 49) :
+    ∀ u : Signature, u.Nonempty → 50 - n ≤ u.card →
+      u.card ∣ SignatureIntersectionCount (lowerFill n) u := by
+  induction n with
+  | zero =>
+      intro u _hu hcard
+      exact canonicalHighCount_valid_on_high u (by simpa using hcard)
+  | succ n ih =>
+      intro u hu hcard
+      change u.card ∣
+        SignatureIntersectionCount (fillRank (49 - n) (lowerFill n)) u
+      apply fillRank_extends_completed_ranks
+      · intro w hw hkw
+        apply ih
+        · omega
+        · exact hw
+        · omega
+      · exact hu
+      · omega
+
+lemma lowerFill_preserves_high
+    (n : ℕ) :
+    ∀ v : Signature, 50 ≤ v.card →
+      lowerFill n v = canonicalHighCount v := by
+  induction n with
+  | zero =>
+      intro v _hv
+      rfl
+  | succ n ih =>
+      intro v hv
+      change fillRank (49 - n) (lowerFill n) v = canonicalHighCount v
+      rw [fillRank_eq_self_of_high (by omega) hv, ih v hv]
+
+lemma lowerFill_objective
+    (n : ℕ) :
+    SignatureObjective (lowerFill n) =
+      SignatureObjective canonicalHighCount := by
+  induction n with
+  | zero =>
+      rfl
+  | succ n ih =>
+      change SignatureObjective (fillRank (49 - n) (lowerFill n)) =
+        SignatureObjective canonicalHighCount
+      rw [SignatureObjective_fillRank_of_low (by omega), ih]
+
 /-- Placeholder for the finite iteration over `k = 49, 48, ..., 1`. A convenient
 implementation is to define this by `Nat.iterate` or a fold over
 `List.range 49`, then use `fillRank_extends_completed_ranks` as the loop
@@ -752,13 +966,13 @@ lemma lower_rank_filling_exists :
         u.card ∣ SignatureIntersectionCount f u) ∧
       (∀ v : Signature, 50 ≤ v.card → f v = canonicalHighCount v) ∧
       SignatureObjective f = SignatureObjective canonicalHighCount := by
-  -- Start from `canonicalHighCount`. The invariant after finishing rank `k` is:
-  --   every nonempty `u` with `k ≤ u.card` is valid,
-  --   every high-rank `v` still has the canonical count,
-  --   the objective is unchanged.
-  -- The base case at rank `50` is `canonicalHighCount_valid_on_high`; the step
-  -- from `k+1` to `k` is `fillRank_extends_completed_ranks`.
-  sorry
+  refine ⟨lowerFill 49, ?_, ?_, ?_⟩
+  · intro u hu
+    apply lowerFill_valid 49 (by norm_num) u hu
+    have hpos : 0 < u.card := Finset.card_pos.mpr hu
+    omega
+  · exact lowerFill_preserves_high 49
+  · exact lowerFill_objective 49
 
 /-- The downward-induction construction of the lower-rank counts. This packages
 the easy half of the proof in the signature-count language. -/
@@ -768,10 +982,170 @@ lemma extend_canonical_high_counts :
       0 < f topSignature ∧
       (∀ v : Signature, 50 ≤ v.card → f v = canonicalHighCount v) ∧
       SignatureObjective f = solution := by
-  -- Fill ranks `49, 48, ..., 1` by choosing the least residue modulo `|u|`
-  -- that makes the divisibility condition true. This leaves the objective
-  -- unchanged, and `f(topSignature) = 100`.
-  sorry
+  rcases lower_rank_filling_exists with ⟨f, hf, hhigh, hobj⟩
+  refine ⟨f, hf, ?_, hhigh, ?_⟩
+  · rw [hhigh topSignature (by simp [topSignature])]
+    simp [canonicalHighCount, topSignature]
+  · rw [hobj, canonicalHighCount_objective]
+
+abbrev RealizedPoint (f : Signature → ℕ) :=
+  Sigma fun v : Signature => Fin (f v)
+
+noncomputable def encodePoint (f : Signature → ℕ) :
+    RealizedPoint f ↪ ℤ := by
+  classical
+  let e := Fintype.equivFin (RealizedPoint f)
+  refine
+    { toFun := fun x => ((e x).1 : ℤ)
+      inj' := ?_ }
+  intro x y hxy
+  apply e.injective
+  apply Fin.ext
+  exact Int.ofNat.inj hxy
+
+noncomputable def realizedFamily (f : Signature → ℕ)
+    (i : Fin 100) : Set ℤ :=
+  Set.range fun x : {x : RealizedPoint f // i ∈ x.1.1} =>
+    encodePoint f x.1
+
+lemma realizedFamily_finite (f : Signature → ℕ) (i : Fin 100) :
+    (realizedFamily f i).Finite := by
+  classical
+  exact Set.finite_range fun x : {x : RealizedPoint f // i ∈ x.1.1} =>
+    encodePoint f x.1
+
+lemma mem_realizedFamily_iff
+    {f : Signature → ℕ} {i : Fin 100} {x : RealizedPoint f} :
+    encodePoint f x ∈ realizedFamily f i ↔ i ∈ x.1 := by
+  constructor
+  · intro hx
+    rcases hx with ⟨y, hy⟩
+    have hxy : y.1 = x := (encodePoint f).injective hy
+    simpa [hxy] using y.2
+  · intro hi
+    exact ⟨⟨x, hi⟩, rfl⟩
+
+lemma realizedPoint_subtype_card
+    (f : Signature → ℕ) (p : Signature → Prop) [DecidablePred p] :
+    Nat.card {x : RealizedPoint f // p x.1} =
+      ∑ v : Signature, if p v then f v else 0 := by
+  classical
+  let e :
+      {x : RealizedPoint f // p x.1} ≃
+        Sigma (fun v : {v : Signature // p v} => Fin (f v.1)) :=
+    { toFun := fun x => ⟨⟨x.1.1, x.2⟩, x.1.2⟩
+      invFun := fun x => ⟨⟨x.1.1, x.2⟩, x.1.2⟩
+      left_inv := by
+        intro x
+        cases x with
+        | mk x hx =>
+          cases x
+          rfl
+      right_inv := by
+        intro x
+        cases x with
+        | mk v j =>
+          cases v
+          rfl }
+  calc
+    Nat.card {x : RealizedPoint f // p x.1}
+        = Fintype.card {x : RealizedPoint f // p x.1} := Nat.card_eq_fintype_card
+    _ = Fintype.card (Sigma (fun v : {v : Signature // p v} => Fin (f v.1))) :=
+          Fintype.card_congr e
+    _ = ∑ v : {v : Signature // p v}, f v.1 := by
+          rw [Fintype.card_sigma]
+          simp
+    _ = ∑ v : Signature, if p v then f v else 0 := by
+          rw [← Finset.sum_filter]
+          rw [Finset.sum_subtype ((Finset.univ : Finset Signature).filter p) ?_
+            (fun v => f v)]
+          intro v
+          simp
+
+lemma realized_intersection_eq
+    {f : Signature → ℕ} (u : Signature) (hu : u.Nonempty) :
+    (⋂ i ∈ u, realizedFamily f i) =
+      Set.range fun x : {x : RealizedPoint f // u ⊆ x.1.1} =>
+        encodePoint f x.1 := by
+  classical
+  ext z
+  constructor
+  · intro hz
+    rcases hu with ⟨i0, hi0⟩
+    have hzi0 : z ∈ realizedFamily f i0 := Set.mem_iInter₂.mp hz i0 hi0
+    rcases hzi0 with ⟨x, hx⟩
+    have hsub : u ⊆ x.1.1 := by
+      intro i hi
+      have hzi : z ∈ realizedFamily f i := Set.mem_iInter₂.mp hz i hi
+      have henc : encodePoint f x.1 ∈ realizedFamily f i := by
+        rw [hx]
+        exact hzi
+      exact (mem_realizedFamily_iff (x := x.1)).mp henc
+    exact ⟨⟨x.1, hsub⟩, hx⟩
+  · intro hz
+    rcases hz with ⟨x, hx⟩
+    rw [← hx]
+    exact Set.mem_iInter₂.mpr fun i hi =>
+      (mem_realizedFamily_iff (x := x.1)).mpr (x.2 hi)
+
+lemma realized_intersection_ncard
+    {f : Signature → ℕ} (u : Signature) (hu : u.Nonempty) :
+    (⋂ i ∈ u, realizedFamily f i).ncard =
+      SignatureIntersectionCount f u := by
+  classical
+  rw [realized_intersection_eq u hu]
+  rw [Set.ncard_range_of_injective]
+  · rw [realizedPoint_subtype_card, SignatureIntersectionCount]
+  · intro x y hxy
+    ext
+    exact (encodePoint f).injective hxy
+
+lemma realized_membership_ncard
+    {f : Signature → ℕ} (x : RealizedPoint f) :
+    {i : Fin 100 | encodePoint f x ∈ realizedFamily f i}.ncard = x.1.card := by
+  classical
+  have hfin : {i : Fin 100 | encodePoint f x ∈ realizedFamily f i}.Finite :=
+    Set.finite_univ.subset (by intro i _; simp)
+  rw [Set.ncard_eq_toFinset_card _ hfin]
+  have htoFinset :
+      hfin.toFinset = x.1 := by
+    ext i
+    simp [mem_realizedFamily_iff]
+  rw [htoFinset]
+
+lemma realized_objective_ncard
+    {f : Signature → ℕ} :
+    {z : ℤ | InAtLeastKSubsets (realizedFamily f) 50 z}.ncard =
+      SignatureObjective f := by
+  classical
+  have hobj_eq :
+      {z : ℤ | InAtLeastKSubsets (realizedFamily f) 50 z} =
+        Set.range fun x : {x : RealizedPoint f // 50 ≤ x.1.1.card} =>
+          encodePoint f x.1 := by
+    ext z
+    constructor
+    · intro hz
+      have hfin : {i : Fin 100 | z ∈ realizedFamily f i}.Finite :=
+        Set.finite_univ.subset (by intro i _; simp)
+      have hpos : 0 < {i : Fin 100 | z ∈ realizedFamily f i}.ncard :=
+        lt_of_lt_of_le (by norm_num) hz
+      rcases (Set.ncard_pos hfin).mp hpos with ⟨i, hi⟩
+      rcases hi with ⟨x, hx⟩
+      have hhigh : 50 ≤ x.1.1.card := by
+        rw [← realized_membership_ncard x.1]
+        rwa [hx]
+      exact ⟨⟨x.1, hhigh⟩, hx⟩
+    · intro hz
+      rcases hz with ⟨x, hx⟩
+      rw [← hx]
+      rw [InAtLeastKSubsets, realized_membership_ncard x.1]
+      exact x.2
+  rw [hobj_eq]
+  rw [Set.ncard_range_of_injective]
+  · rw [realizedPoint_subtype_card, SignatureObjective]
+  · intro x y hxy
+    ext
+    exact (encodePoint f).injective hxy
 
 /-- Any finite nonempty-signature count model can be realized by actual finite
 sets of integers. -/
@@ -781,10 +1155,18 @@ lemma realize_signature_counts
     ∃ S : Fin 100 → Set ℤ,
       Good S ∧
       {z : ℤ | InAtLeastKSubsets S 50 z }.ncard = SignatureObjective f := by
-  -- Use disjoint integer blocks indexed by nonempty signatures and a finite
-  -- counter `0 ≤ j < f v`; put an integer from block `v` into exactly those
-  -- `S i` with `i ∈ v`.
-  sorry
+  classical
+  refine ⟨realizedFamily f, ?_, realized_objective_ncard⟩
+  refine ⟨realizedFamily_finite f, ?_, ?_⟩
+  · let x : RealizedPoint f := ⟨topSignature, ⟨0, htop⟩⟩
+    apply Set.ne_empty_iff_nonempty.mpr
+    refine ⟨encodePoint f x, ?_⟩
+    exact Set.mem_iInter.mpr fun i =>
+      (mem_realizedFamily_iff (x := x)).mpr (by simp [topSignature])
+  · intro T hT
+    rcases hf T hT with ⟨k, hk⟩
+    refine ⟨k, ?_⟩
+    rw [realized_intersection_ncard T hT, hk, Nat.mul_comm]
 
 /-- Signature counts extracted from an actual family of sets. The empty fiber is
 ignored, because it is the infinite complement of the union of the sets. -/
@@ -1127,6 +1509,14 @@ lemma normalizeSignature_preserves_canonical_of_card_gt
     normalizeSignature f v w = canonicalHighCount w := by
   rw [normalizeSignature_eq_self_of_card_gt f hcard, hw]
 
+lemma normalizeSignature_preserves_canonical_of_same_rank_ne
+    {f : Signature → ℕ} {v w : Signature}
+    (hcard : v.card = w.card) (hneq : w ≠ v)
+    (hw : f w = canonicalHighCount w) :
+    normalizeSignature f v w = canonicalHighCount w := by
+  unfold normalizeSignature
+  exact iterate_pushDown_preserves_canonical_of_same_rank_ne hcard hneq hw
+
 lemma high_signature_count_forced_after_supersets_normalized
     {f : Signature → ℕ} {v : Signature}
     (hf : SignatureCountCondition f) (htop : 0 < f topSignature)
@@ -1227,13 +1617,45 @@ lemma normalize_rank_subset
       0 < g topSignature ∧
       (∀ w : Signature, k < w.card → g w = canonicalHighCount w) ∧
       (∀ v : Signature, v ∈ A → g v = canonicalHighCount v) := by
-  -- Induct on `A`.
-  -- Base: take `g = f`.
-  -- Step: first normalize the smaller set, then apply `normalizeSignature` to
-  -- the new signature. Use `normalizeSignature_spec` for condition/objective,
-  -- `normalizeSignature_top_pos` for the top count, and the preservation
-  -- lemmas above for higher-rank and already-completed same-rank signatures.
-  sorry
+  classical
+  revert hA f
+  refine Finset.induction_on A ?base ?step
+  · intro f _hA hf htop hgt
+    refine ⟨f, hf, le_rfl, htop, hgt, ?_⟩
+    intro v hv
+    simp at hv
+  · intro v A hv_not_mem ih f hA hf htop hgt
+    have hA0 : ∀ w : Signature, w ∈ A → w.card = k := by
+      intro w hw
+      exact hA w (by simp [hw])
+    have hv_card : v.card = k := hA v (by simp [hv_not_mem])
+    rcases ih f hA0 hf htop hgt with
+      ⟨g0, hg0, hobj0, htop0, hgt0, hA0canon⟩
+    have hv_high : 50 ≤ v.card := by omega
+    have hstrict : ∀ w : Signature, v ⊂ w →
+        g0 w = canonicalHighCount w := by
+      intro w hvw
+      apply hgt0
+      have hcard := Finset.card_lt_card hvw
+      omega
+    rcases normalizeSignature_spec hg0 htop0 hv_high hstrict with
+      ⟨hg1, hobj1, hcanonv⟩
+    refine ⟨normalizeSignature g0 v, hg1, le_trans hobj1 hobj0,
+      normalizeSignature_top_pos htop0 hcanonv, ?_, ?_⟩
+    · intro w hkw
+      apply normalizeSignature_preserves_canonical_of_card_gt
+      · omega
+      · exact hgt0 w hkw
+    · intro w hw
+      rw [Finset.mem_insert] at hw
+      rcases hw with rfl | hwA
+      · exact hcanonv
+      · apply normalizeSignature_preserves_canonical_of_same_rank_ne
+        · rw [hv_card, hA0 w hwA]
+        · intro hwv
+          subst hwv
+          exact hv_not_mem hwA
+        · exact hA0canon w hwA
 
 /-- Normalize every signature of one rank `k`, assuming all higher ranks are
 already canonical. -/
@@ -1258,6 +1680,33 @@ lemma normalize_rank
   · have hw : w.card = k := by omega
     exact hrank w (mem_rankSignatures.mpr hw)
 
+lemma smooth_high_signatures_from_rank
+    (k : ℕ) (hk49 : 49 ≤ k) (hk100 : k ≤ 100)
+    (f : Signature → ℕ)
+    (hf : SignatureCountCondition f) (htop : 0 < f topSignature)
+    (hgt : ∀ w : Signature, k < w.card → f w = canonicalHighCount w) :
+    ∃ g : Signature → ℕ,
+      SignatureCountCondition g ∧
+      SignatureObjective g ≤ SignatureObjective f ∧
+      0 < g topSignature ∧
+      (∀ w : Signature, 50 ≤ w.card → g w = canonicalHighCount w) := by
+  classical
+  revert hk100 f
+  refine Nat.le_induction ?base ?step k hk49
+  · intro _hk100 f hf htop hgt
+    refine ⟨f, hf, le_rfl, htop, ?_⟩
+    intro w hw
+    exact hgt w (by omega)
+  · intro k hk49 ih hk_succ_100 f hf htop hgt
+    rcases normalize_rank (k + 1) f (by omega) hf htop hgt with
+      ⟨g1, hg1, hobj1, htop1, hge1⟩
+    have hgt1 : ∀ w : Signature, k < w.card → g1 w = canonicalHighCount w := by
+      intro w hw
+      exact hge1 w (by omega)
+    rcases ih (by omega) g1 hg1 htop1 hgt1 with
+      ⟨g, hg, hobj, htopg, hcanon⟩
+    exact ⟨g, hg, le_trans hobj hobj1, htopg, hcanon⟩
+
 /-- The outer descending rank iteration, from rank `100` down to rank `50`.
 This is the only remaining global bookkeeping after `normalize_rank`. -/
 lemma smooth_high_signatures_by_ranks
@@ -1268,12 +1717,13 @@ lemma smooth_high_signatures_by_ranks
       SignatureObjective g ≤ SignatureObjective f ∧
       0 < g topSignature ∧
       (∀ v : Signature, 50 ≤ v.card → g v = canonicalHighCount v) := by
-  -- Iterate `normalize_rank` for `k = 100, 99, ..., 50`.
-  -- A convenient invariant after finishing ranks strictly above `k` is:
-  --   condition holds, objective has not increased, top count is positive, and
-  --   every signature with cardinality `> k` is canonical.
-  -- Applying `normalize_rank k` changes the invariant from `> k` to `≥ k`.
-  sorry
+  have hgt0 : ∀ w : Signature, 100 < w.card → f w = canonicalHighCount w := by
+    intro w hw
+    have hle : w.card ≤ 100 := by
+      have h := Finset.card_le_univ w
+      simpa using h
+    omega
+  exact smooth_high_signatures_from_rank 100 (by norm_num) (by norm_num) f hf htop hgt0
 
 lemma smooth_high_signatures_to_canonical
     (f : Signature → ℕ)
