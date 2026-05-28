@@ -5,7 +5,9 @@ Authors:
 -/
 
 import Mathlib.Data.Set.Card
-import Mathlib.Tactic
+import Mathlib.Data.Nat.Choose.Sum
+import Mathlib.Tactic.NormNum.Basic
+import Mathlib.Tactic.Ring.RingNF
 
 import ProblemExtraction
 
@@ -433,12 +435,110 @@ lemma sum_signatures_by_card (F : ℕ → ℕ) :
       ∑ r ∈ Finset.range 101, F r * Nat.choose 100 r := by
   simpa using (sum_supersets_by_rank (∅ : Signature) F)
 
+lemma canonicalHighCount_objective_rank_sum_as_tail :
+    (∑ r ∈ Finset.range 101,
+        (if 50 ≤ r then 2 * r - 100 else 0) * Nat.choose 100 r) =
+      ∑ j ∈ Finset.range 51,
+        (2 * (50 + j) - 100) * Nat.choose 100 (50 + j) := by
+  let F : ℕ → ℕ := fun r =>
+    (if 50 ≤ r then 2 * r - 100 else 0) * Nat.choose 100 r
+  have hsplit := Finset.sum_range_add F 50 51
+  norm_num at hsplit
+  rw [hsplit]
+  have hzero : (∑ x ∈ Finset.range 50, F x) = 0 := by
+    apply Finset.sum_eq_zero
+    intro x hx
+    have hxlt : x < 50 := Finset.mem_range.mp hx
+    simp [F, not_le_of_gt hxlt]
+  rw [hzero, zero_add]
+  refine Finset.sum_congr rfl ?_
+  intro j _hj
+  simp [F]
+
+lemma canonicalHighCount_objective_summand_int {r : ℕ}
+    (hr50 : 50 ≤ r) (hr100 : r ≤ 100) :
+    (((2 * r - 100) * Nat.choose 100 r : ℕ) : ℤ) =
+      100 * ((Nat.choose 99 (r - 1) : ℤ) - Nat.choose 99 r) := by
+  have hrpos : 0 < r := by omega
+  have hmul_left_nat : 100 * Nat.choose 99 (r - 1) = r * Nat.choose 100 r := by
+    have h := Nat.add_one_mul_choose_eq 99 (r - 1)
+    have hr : r - 1 + 1 = r := Nat.sub_add_cancel hrpos
+    simpa [hr, Nat.mul_comm, Nat.mul_left_comm, Nat.mul_assoc] using h
+  have hmul_right_nat : 100 * Nat.choose 99 r = (100 - r) * Nat.choose 100 r := by
+    have h := Nat.choose_mul_succ_eq 99 r
+    simpa [Nat.mul_comm, Nat.mul_left_comm, Nat.mul_assoc] using h
+  have hmul_left : (100 : ℤ) * Nat.choose 99 (r - 1) = r * Nat.choose 100 r := by
+    exact_mod_cast hmul_left_nat
+  have hmul_right :
+      (100 : ℤ) * Nat.choose 99 r = (100 - r : ℕ) * Nat.choose 100 r := by
+    exact_mod_cast hmul_right_nat
+  calc
+    (((2 * r - 100) * Nat.choose 100 r : ℕ) : ℤ)
+        = ((2 * r - 100 : ℕ) : ℤ) * Nat.choose 100 r := by simp
+    _ = (((r : ℤ) - (100 - r : ℕ)) * Nat.choose 100 r) := by
+          have hcoef : ((2 * r - 100 : ℕ) : ℤ) = (r : ℤ) - (100 - r : ℕ) := by
+            omega
+          rw [hcoef]
+    _ = (r * Nat.choose 100 r : ℤ) - ((100 - r : ℕ) * Nat.choose 100 r : ℤ) := by
+          ring
+    _ = 100 * ((Nat.choose 99 (r - 1) : ℤ) - Nat.choose 99 r) := by
+          rw [← hmul_left, ← hmul_right]
+          ring
+
+lemma canonicalHighCount_objective_telescope_int (n : ℕ) :
+    (∑ j ∈ Finset.range (n + 1),
+        (100 : ℤ) * ((Nat.choose 99 (49 + j) : ℤ) - Nat.choose 99 (50 + j))) =
+      100 * ((Nat.choose 99 49 : ℤ) - Nat.choose 99 (50 + n)) := by
+  induction n with
+  | zero =>
+      simp
+  | succ n ih =>
+      rw [Finset.sum_range_succ]
+      rw [ih]
+      ring_nf
+
+lemma canonicalHighCount_objective_tail_sum :
+    (∑ j ∈ Finset.range 51,
+        (2 * (50 + j) - 100) * Nat.choose 100 (50 + j)) =
+      50 * Nat.choose 100 50 := by
+  have hcast :
+      ((∑ j ∈ Finset.range 51,
+          (2 * (50 + j) - 100) * Nat.choose 100 (50 + j) : ℕ) : ℤ) =
+        ((50 * Nat.choose 100 50 : ℕ) : ℤ) := by
+    calc
+      ((∑ j ∈ Finset.range 51,
+          (2 * (50 + j) - 100) * Nat.choose 100 (50 + j) : ℕ) : ℤ)
+          = ∑ j ∈ Finset.range 51,
+              (((2 * (50 + j) - 100) * Nat.choose 100 (50 + j) : ℕ) : ℤ) := by
+              rw [Nat.cast_sum]
+      _ = ∑ j ∈ Finset.range 51,
+              (100 : ℤ) * ((Nat.choose 99 (49 + j) : ℤ) - Nat.choose 99 (50 + j)) := by
+              refine Finset.sum_congr rfl ?_
+              intro j hj
+              have hjlt : j < 51 := Finset.mem_range.mp hj
+              have h49 : 50 + j - 1 = 49 + j := by omega
+              rw [canonicalHighCount_objective_summand_int
+                (by omega : 50 ≤ 50 + j) (by omega : 50 + j ≤ 100), h49]
+      _ = 100 * ((Nat.choose 99 49 : ℤ) - Nat.choose 99 (50 + 50)) := by
+              simpa using canonicalHighCount_objective_telescope_int 50
+      _ = ((50 * Nat.choose 100 50 : ℕ) : ℤ) := by
+              have hboundary :
+                  100 * Nat.choose 99 49 = Nat.choose 100 50 * 50 := by
+                simpa [Nat.mul_comm, Nat.mul_left_comm, Nat.mul_assoc] using
+                  (Nat.add_one_mul_choose_eq 99 49)
+              have hzero : Nat.choose 99 (50 + 50) = 0 := by
+                exact Nat.choose_eq_zero_of_lt (by norm_num)
+              rw [hzero]
+              norm_num
+              exact_mod_cast hboundary.trans (Nat.mul_comm (Nat.choose 100 50) 50)
+  exact Nat.cast_inj.mp hcast
+
 lemma canonicalHighCount_objective_rank_sum :
     (∑ r ∈ Finset.range 101,
         (if 50 ≤ r then 2 * r - 100 else 0) * Nat.choose 100 r) =
       solution := by
-  rw [solution]
-  native_decide
+  rw [canonicalHighCount_objective_rank_sum_as_tail, solution]
+  exact canonicalHighCount_objective_tail_sum
 
 lemma canonicalHighCount_objective :
     SignatureObjective canonicalHighCount = solution := by
@@ -1363,7 +1463,8 @@ lemma iterate_pushDown_condition {f : Signature → ℕ} {v : Signature} (n : �
         have hn : (n + 1) * v.card = n * v.card + v.card := by ring
         omega
       · apply ih
-        have : n * v.card ≤ (n + 1) * v.card := by nlinarith [Nat.zero_le v.card]
+        have : n * v.card ≤ (n + 1) * v.card :=
+          Nat.mul_le_mul_right v.card (Nat.le_succ n)
         omega
 
 lemma iterate_pushDown_objective_le {f : Signature → ℕ} {v : Signature} (n : ℕ)
@@ -1379,7 +1480,8 @@ lemma iterate_pushDown_objective_le {f : Signature → ℕ} {v : Signature} (n :
           (pushDown ((Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f)) v) ≤
         SignatureObjective f
       have hprev : n * v.card ≤ f v := by
-        have : n * v.card ≤ (n + 1) * v.card := by nlinarith [Nat.zero_le v.card]
+        have : n * v.card ≤ (n + 1) * v.card :=
+          Nat.mul_le_mul_right v.card (Nat.le_succ n)
         omega
       have henough : v.card ≤
           (Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f) v := by
