@@ -145,6 +145,63 @@ downward induction to satisfy the remaining divisibility conditions. -/
 def canonicalHighCount (v : Signature) : ℕ :=
   if 50 ≤ v.card then 2 * v.card - 100 else 0
 
+/-- Supersignatures of `u` of size `u.card + j` are obtained by choosing
+exactly `j` elements from the complement of `u` in `topSignature`. This is the
+rank-layer counting lemma used to avoid a global powerset bijection. -/
+lemma superset_layer_card (u : Signature) (j : ℕ) :
+    ((Finset.univ : Finset Signature).filter
+        (fun v : Signature => u ⊆ v ∧ v.card = u.card + j)).card =
+      (100 - u.card).choose j := by
+  -- Proof plan:
+  -- map `x ∈ Finset.powersetCard j (topSignature \ u)` to `u ∪ x`;
+  -- the image is exactly the filtered layer above. Injectivity follows after
+  -- subtracting `u` from both sides, since every `x` lies in `topSignature \ u`.
+  -- Then `Finset.card_powersetCard` gives the binomial coefficient.
+  sorry
+
+/-- Group the canonical high-count intersection sum by the number of new
+indices added to `u`. If `j = v.card - u.card`, there are
+`(100 - u.card).choose j` such supersignatures, and each contributes
+`2 * (u.card + j) - 100`. -/
+lemma SignatureIntersectionCount_canonicalHighCount_grouped
+    (u : Signature) (hu : 50 ≤ u.card) :
+    SignatureIntersectionCount canonicalHighCount u =
+      ∑ j ∈ Finset.range (100 - u.card + 1),
+        (2 * (u.card + j) - 100) * (100 - u.card).choose j := by
+  -- Proof plan:
+  -- rewrite `SignatureIntersectionCount` as a sum over supersets of `u`.
+  -- Since `hu : 50 ≤ u.card`, every superset is also high, so
+  -- `canonicalHighCount v = 2 * v.card - 100`.
+  -- Partition the supersets by the rank difference
+  -- `j = v.card - u.card`, and use `superset_layer_card` for each layer.
+  sorry
+
+/-- The binomial arithmetic left after grouping by rank. This is the identity
+`∑_j (2(a+j)-100) C(m,j) = a 2^m`, under `a + m = 100`. -/
+lemma canonicalHighCount_grouped_sum_eq {a m : ℕ}
+    (ham : a + m = 100) (ha : 50 ≤ a) :
+    (∑ j ∈ Finset.range (m + 1),
+        (2 * (a + j) - 100) * m.choose j) =
+      a * 2 ^ m := by
+  -- Proof plan:
+  -- use `Nat.sum_range_choose m` and `Nat.sum_range_mul_choose m`.
+  -- Split on `m = 0`; in the positive case rewrite `2^m` as
+  -- `2 * 2^(m - 1)`. The assumptions imply `m ≤ a`, so the natural-number
+  -- subtractions in `2 * (a + j) - 100` are genuine subtractions.
+  sorry
+
+/-- Closed form for the canonical high-count intersection at a high signature.
+This is the form needed for divisibility by `u.card`. -/
+lemma SignatureIntersectionCount_canonicalHighCount_closed_form
+    (u : Signature) (hu : 50 ≤ u.card) :
+    SignatureIntersectionCount canonicalHighCount u =
+      u.card * 2 ^ (100 - u.card) := by
+  rw [SignatureIntersectionCount_canonicalHighCount_grouped u hu]
+  have hcard_le : u.card ≤ 100 := by
+    have h := Finset.card_le_univ u
+    simpa using h
+  exact canonicalHighCount_grouped_sum_eq (by omega) hu
+
 /-- One push-down step in the smoothing proof. Remove `|v|` elements from
 signature `v`, and add one element to every immediate sub-signature. -/
 def pushDown (f : Signature → ℕ) (v : Signature) : Signature → ℕ :=
@@ -223,9 +280,9 @@ lemma immediate_supersets_count {u v : Signature} (huv : u ⊆ v) :
 lemma canonicalHighCount_valid_on_high :
     ∀ u : Signature, 50 ≤ u.card →
       u.card ∣ SignatureIntersectionCount canonicalHighCount u := by
-  -- This is the binomial computation from the informal proof:
-  -- if `|u| = 100 - k`, then the sum equals `|u| * 2^k`.
-  sorry
+  intro u hu
+  rw [SignatureIntersectionCount_canonicalHighCount_closed_form u hu]
+  exact dvd_mul_right u.card (2 ^ (100 - u.card))
 
 lemma canonicalHighCount_objective :
     SignatureObjective canonicalHighCount = solution := by
