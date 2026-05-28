@@ -25,8 +25,6 @@ at least 50 sets?
 
 namespace Usa2024P2
 
-open scoped BigOperators
-
 determine solution : ℕ := 50 * Nat.choose 100 50
 
 structure Good (S : Fin 100 → Set ℤ) : Prop where
