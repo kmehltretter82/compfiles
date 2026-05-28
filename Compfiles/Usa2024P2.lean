@@ -152,12 +152,82 @@ lemma superset_layer_card (u : Signature) (j : ℕ) :
     ((Finset.univ : Finset Signature).filter
         (fun v : Signature => u ⊆ v ∧ v.card = u.card + j)).card =
       (100 - u.card).choose j := by
-  -- Proof plan:
-  -- map `x ∈ Finset.powersetCard j (topSignature \ u)` to `u ∪ x`;
-  -- the image is exactly the filtered layer above. Injectivity follows after
-  -- subtracting `u` from both sides, since every `x` lies in `topSignature \ u`.
-  -- Then `Finset.card_powersetCard` gives the binomial coefficient.
-  sorry
+  classical
+  let c : Signature := topSignature \ u
+  let pieces : Finset Signature := Finset.powersetCard j c
+  have hfilter :
+      ((Finset.univ : Finset Signature).filter
+          (fun v : Signature => u ⊆ v ∧ v.card = u.card + j)) =
+        pieces.image (fun x : Signature => u ∪ x) := by
+    ext v
+    constructor
+    · intro hv
+      have hv' := Finset.mem_filter.mp hv
+      have huv : u ⊆ v := hv'.2.1
+      have hvcard : v.card = u.card + j := hv'.2.2
+      refine Finset.mem_image.mpr ⟨v \ u, ?_, ?_⟩
+      · rw [Finset.mem_powersetCard]
+        constructor
+        · intro a ha
+          have hav : a ∈ v := (Finset.mem_sdiff.mp ha).1
+          have hau : a ∉ u := (Finset.mem_sdiff.mp ha).2
+          exact Finset.mem_sdiff.mpr ⟨by simp [topSignature], hau⟩
+        · rw [Finset.card_sdiff_of_subset huv, hvcard]
+          omega
+      · ext a
+        constructor
+        · intro ha
+          rcases Finset.mem_union.mp ha with hau | ha'
+          · exact huv hau
+          · exact (Finset.mem_sdiff.mp ha').1
+        · intro hav
+          by_cases hau : a ∈ u
+          · exact Finset.mem_union_left _ hau
+          · exact Finset.mem_union_right _ (Finset.mem_sdiff.mpr ⟨hav, hau⟩)
+    · intro hv
+      rcases Finset.mem_image.mp hv with ⟨x, hx, rfl⟩
+      have hx' := Finset.mem_powersetCard.mp hx
+      refine Finset.mem_filter.mpr ⟨Finset.mem_univ _, ?_⟩
+      constructor
+      · intro a ha
+        exact Finset.mem_union_left x ha
+      · have hdisj : Disjoint u x := by
+          rw [Finset.disjoint_left]
+          intro a hau hax
+          exact (Finset.mem_sdiff.mp (hx'.1 hax)).2 hau
+        rw [(Finset.card_union_eq_card_add_card).mpr hdisj, hx'.2]
+  have himage_card : (pieces.image (fun x : Signature => u ∪ x)).card = pieces.card := by
+    apply Finset.card_image_of_injOn
+    intro x hx y hy hxy
+    have hx' := Finset.mem_powersetCard.mp hx
+    have hy' := Finset.mem_powersetCard.mp hy
+    change u ∪ x = u ∪ y at hxy
+    ext a
+    constructor
+    · intro hax
+      have hxnotu : a ∉ u := (Finset.mem_sdiff.mp (hx'.1 hax)).2
+      have hay_or : a ∈ u ∪ y := by
+        rw [← hxy]
+        exact Finset.mem_union_right u hax
+      rcases Finset.mem_union.mp hay_or with hau | hay
+      · exact False.elim (hxnotu hau)
+      · exact hay
+    · intro hay
+      have hynotu : a ∉ u := (Finset.mem_sdiff.mp (hy'.1 hay)).2
+      have hax_or : a ∈ u ∪ x := by
+        rw [hxy]
+        exact Finset.mem_union_right u hay
+      rcases Finset.mem_union.mp hax_or with hau | hax
+      · exact False.elim (hynotu hau)
+      · exact hax
+  have hc_card : c.card = 100 - u.card := by
+    have hsubset : u ⊆ topSignature := by
+      intro a _
+      simp [topSignature]
+    rw [Finset.card_sdiff_of_subset hsubset]
+    simp [c, topSignature]
+  rw [hfilter, himage_card]
+  rw [Finset.card_powersetCard, hc_card]
 
 /-- Group the canonical high-count intersection sum by the number of new
 indices added to `u`. If `j = v.card - u.card`, there are
