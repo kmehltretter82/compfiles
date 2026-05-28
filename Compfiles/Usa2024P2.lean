@@ -225,7 +225,7 @@ lemma superset_layer_card (u : Signature) (j : ℕ) :
       intro a _
       simp [topSignature]
     rw [Finset.card_sdiff_of_subset hsubset]
-    simp [c, topSignature]
+    simp [topSignature]
   rw [hfilter, himage_card]
   rw [Finset.card_powersetCard, hc_card]
 
@@ -1069,6 +1069,102 @@ lemma pushDown_to_canonical_count {f : Signature → ℕ} {v : Signature}
   rw [iterate_pushDown_self, hmul]
   omega
 
+/-- The high-rank signatures of a fixed cardinality. These are processed in an
+arbitrary finset order inside one rank. -/
+def rankSignatures (k : ℕ) : Finset Signature :=
+  (Finset.univ : Finset Signature).filter fun v : Signature => v.card = k
+
+lemma mem_rankSignatures {k : ℕ} {v : Signature} :
+    v ∈ rankSignatures k ↔ v.card = k := by
+  simp [rankSignatures]
+
+lemma pushDown_eq_self_of_not_affected {f : Signature → ℕ} {v w : Signature}
+    (hneq : w ≠ v)
+    (hnot : ¬ (w ⊆ v ∧ w.card + 1 = v.card)) :
+    pushDown f v w = f w := by
+  simp [pushDown, hneq, hnot]
+
+lemma pushDown_eq_self_of_card_ge_ne {f : Signature → ℕ} {v w : Signature}
+    (hcard : v.card ≤ w.card) (hneq : w ≠ v) :
+    pushDown f v w = f w := by
+  apply pushDown_eq_self_of_not_affected hneq
+  intro h
+  omega
+
+lemma pushDown_eq_self_of_card_gt {f : Signature → ℕ} {v w : Signature}
+    (hcard : v.card < w.card) :
+    pushDown f v w = f w := by
+  apply pushDown_eq_self_of_card_ge_ne (le_of_lt hcard)
+  intro h
+  subst h
+  omega
+
+lemma iterate_pushDown_eq_self_of_not_affected
+    (f : Signature → ℕ) (v w : Signature) (n : ℕ)
+    (hneq : w ≠ v)
+    (hnot : ¬ (w ⊆ v ∧ w.card + 1 = v.card)) :
+    (Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f) w = f w := by
+  induction n with
+  | zero =>
+      simp [Nat.iterate]
+  | succ n ih =>
+      rw [Function.iterate_succ']
+      change pushDown (Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f) v w = f w
+      rw [pushDown_eq_self_of_not_affected hneq hnot, ih]
+
+lemma iterate_pushDown_eq_self_of_card_ge_ne
+    (f : Signature → ℕ) (v w : Signature) (n : ℕ)
+    (hcard : v.card ≤ w.card) (hneq : w ≠ v) :
+    (Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f) w = f w := by
+  apply iterate_pushDown_eq_self_of_not_affected f v w n hneq
+  intro h
+  omega
+
+lemma iterate_pushDown_eq_self_of_card_gt
+    (f : Signature → ℕ) (v w : Signature) (n : ℕ)
+    (hcard : v.card < w.card) :
+    (Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f) w = f w := by
+  apply iterate_pushDown_eq_self_of_card_ge_ne f v w n (le_of_lt hcard)
+  intro h
+  subst h
+  omega
+
+lemma iterate_pushDown_preserves_canonical_of_card_gt
+    {f : Signature → ℕ} {v w : Signature} {n : ℕ}
+    (hcard : v.card < w.card)
+    (hw : f w = canonicalHighCount w) :
+    (Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f) w =
+      canonicalHighCount w := by
+  rw [iterate_pushDown_eq_self_of_card_gt f v w n hcard, hw]
+
+lemma iterate_pushDown_preserves_canonical_of_same_rank_ne
+    {f : Signature → ℕ} {v w : Signature} {n : ℕ}
+    (hcard : v.card = w.card) (hneq : w ≠ v)
+    (hw : f w = canonicalHighCount w) :
+    (Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f) w =
+      canonicalHighCount w := by
+  rw [iterate_pushDown_eq_self_of_card_ge_ne f v w n (by omega) hneq, hw]
+
+/-- Normalize one signature by pushing down complete `|v|`-blocks until its
+count is the canonical high-rank residue. -/
+def normalizeSignature (f : Signature → ℕ) (v : Signature) : Signature → ℕ :=
+  let n := (f v - canonicalHighCount v) / v.card
+  Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f
+
+lemma normalizeSignature_eq_self_of_card_gt
+    (f : Signature → ℕ) {v w : Signature} (hcard : v.card < w.card) :
+    normalizeSignature f v w = f w := by
+  unfold normalizeSignature
+  exact iterate_pushDown_eq_self_of_card_gt f v w
+    ((f v - canonicalHighCount v) / v.card) hcard
+
+lemma normalizeSignature_preserves_canonical_of_card_gt
+    {f : Signature → ℕ} {v w : Signature}
+    (hcard : v.card < w.card)
+    (hw : f w = canonicalHighCount w) :
+    normalizeSignature f v w = canonicalHighCount w := by
+  rw [normalizeSignature_eq_self_of_card_gt f hcard, hw]
+
 lemma high_signature_count_forced_after_supersets_normalized
     {f : Signature → ℕ} {v : Signature}
     (hf : SignatureCountCondition f) (htop : 0 < f topSignature)
@@ -1081,6 +1177,96 @@ lemma high_signature_count_forced_after_supersets_normalized
   -- the canonical count is the unique residue in `[0, |v|)`. For
   -- `topSignature`, `htop` upgrades divisibility by `100` to the lower bound
   -- `100 ≤ f topSignature`.
+  sorry
+
+lemma normalizeSignature_spec
+    {f : Signature → ℕ} {v : Signature}
+    (hf : SignatureCountCondition f) (htop : 0 < f topSignature)
+    (hv : 50 ≤ v.card)
+    (hstrict : ∀ w : Signature, v ⊂ w → f w = canonicalHighCount w) :
+    SignatureCountCondition (normalizeSignature f v) ∧
+      SignatureObjective (normalizeSignature f v) ≤ SignatureObjective f ∧
+      normalizeSignature f v v = canonicalHighCount v := by
+  rcases high_signature_count_forced_after_supersets_normalized hf htop hv hstrict with
+    ⟨hcan_le, hdiv⟩
+  simpa [normalizeSignature] using pushDown_to_canonical_count hf hv hcan_le hdiv
+
+lemma normalizeSignature_top_pos
+    {f : Signature → ℕ} {v : Signature}
+    (htop : 0 < f topSignature)
+    (hcanon : normalizeSignature f v v = canonicalHighCount v) :
+    0 < normalizeSignature f v topSignature := by
+  by_cases hvt : v = topSignature
+  · subst hvt
+    rw [hcanon, canonicalHighCount_top]
+    norm_num
+  · have hcard : v.card < topSignature.card := card_lt_100_of_ne_topSignature hvt
+    rw [normalizeSignature_eq_self_of_card_gt f hcard]
+    exact htop
+
+/-- Normalize an arbitrary subset of a single rank. The hard work is the finset
+induction over `A`: at each inserted signature `v`, strict supersets are already
+canonical by `hgt`, and previous same-rank signatures are preserved because
+`pushDown` only changes `v` and rank `k - 1`. -/
+lemma normalize_rank_subset
+    (k : ℕ) (A : Finset Signature) (f : Signature → ℕ)
+    (hk : 50 ≤ k)
+    (hA : ∀ v : Signature, v ∈ A → v.card = k)
+    (hf : SignatureCountCondition f)
+    (htop : 0 < f topSignature)
+    (hgt : ∀ w : Signature, k < w.card → f w = canonicalHighCount w) :
+    ∃ g : Signature → ℕ,
+      SignatureCountCondition g ∧
+      SignatureObjective g ≤ SignatureObjective f ∧
+      0 < g topSignature ∧
+      (∀ w : Signature, k < w.card → g w = canonicalHighCount w) ∧
+      (∀ v : Signature, v ∈ A → g v = canonicalHighCount v) := by
+  -- Induct on `A`.
+  -- Base: take `g = f`.
+  -- Step: first normalize the smaller set, then apply `normalizeSignature` to
+  -- the new signature. Use `normalizeSignature_spec` for condition/objective,
+  -- `normalizeSignature_top_pos` for the top count, and the preservation
+  -- lemmas above for higher-rank and already-completed same-rank signatures.
+  sorry
+
+/-- Normalize every signature of one rank `k`, assuming all higher ranks are
+already canonical. -/
+lemma normalize_rank
+    (k : ℕ) (f : Signature → ℕ)
+    (hk : 50 ≤ k)
+    (hf : SignatureCountCondition f)
+    (htop : 0 < f topSignature)
+    (hgt : ∀ w : Signature, k < w.card → f w = canonicalHighCount w) :
+    ∃ g : Signature → ℕ,
+      SignatureCountCondition g ∧
+      SignatureObjective g ≤ SignatureObjective f ∧
+      0 < g topSignature ∧
+      (∀ w : Signature, k ≤ w.card → g w = canonicalHighCount w) := by
+  rcases normalize_rank_subset k (rankSignatures k) f hk
+      (by intro v hv; exact mem_rankSignatures.mp hv) hf htop hgt with
+    ⟨g, hg, hobj, htopg, hgtg, hrank⟩
+  refine ⟨g, hg, hobj, htopg, ?_⟩
+  intro w hkw
+  by_cases hgtw : k < w.card
+  · exact hgtg w hgtw
+  · have hw : w.card = k := by omega
+    exact hrank w (mem_rankSignatures.mpr hw)
+
+/-- The outer descending rank iteration, from rank `100` down to rank `50`.
+This is the only remaining global bookkeeping after `normalize_rank`. -/
+lemma smooth_high_signatures_by_ranks
+    (f : Signature → ℕ)
+    (hf : SignatureCountCondition f) (htop : 0 < f topSignature) :
+    ∃ g : Signature → ℕ,
+      SignatureCountCondition g ∧
+      SignatureObjective g ≤ SignatureObjective f ∧
+      0 < g topSignature ∧
+      (∀ v : Signature, 50 ≤ v.card → g v = canonicalHighCount v) := by
+  -- Iterate `normalize_rank` for `k = 100, 99, ..., 50`.
+  -- A convenient invariant after finishing ranks strictly above `k` is:
+  --   condition holds, objective has not increased, top count is positive, and
+  --   every signature with cardinality `> k` is canonical.
+  -- Applying `normalize_rank k` changes the invariant from `> k` to `≥ k`.
   sorry
 
 lemma smooth_high_signatures_to_canonical
@@ -1097,7 +1283,9 @@ lemma smooth_high_signatures_to_canonical
   -- high-rank residue. The iteration helpers above package the repeated
   -- push-down at one fixed signature; the remaining bookkeeping is the finite
   -- induction over the high-rank signatures ordered by descending cardinality.
-  sorry
+  rcases smooth_high_signatures_by_ranks f hf htop with
+    ⟨g, hg, hobj, _htopg, hcanonical⟩
+  exact ⟨g, hg, hobj, hcanonical⟩
 
 /-- The smoothing argument. Repeated push-downs transform any valid signature
 count model into the canonical high-rank model, never increasing the objective.
