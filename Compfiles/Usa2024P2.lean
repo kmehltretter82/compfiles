@@ -666,6 +666,15 @@ lemma strictSupersetContribution_congr {f g : Signature → ℕ} {u : Signature}
   · simp [huw, h w huw]
   · simp [huw]
 
+/-- Once all strict supersignatures of `u` are canonical, their total
+contribution to the intersection count of `u` is canonical as well. -/
+lemma strictSupersetContribution_eq_canonical_of_strict
+    {f : Signature → ℕ} {u : Signature}
+    (hstrict : ∀ w : Signature, u ⊂ w → f w = canonicalHighCount w) :
+    strictSupersetContribution f u =
+      strictSupersetContribution canonicalHighCount u := by
+  exact strictSupersetContribution_congr hstrict
+
 /-- Split the intersection count of `u` into the exact `u` term and all strict
 supersignatures. This is the triangularity that makes the downward construction
 work. -/
@@ -705,6 +714,28 @@ lemma SignatureIntersectionCount_eq_self_add_strict
           rw [hsum_erase, Nat.add_comm]
     _ = f u + strictSupersetContribution f u := by
           rw [hstrict_erase]
+
+/-- If two numbers become divisible by `d` after adding the same tail, then
+they are congruent modulo `d`. This is the modular cancellation used when the
+strict supersets have already been normalized. -/
+lemma modEq_self_of_split_divisibilities {d a b T : ℕ}
+    (ha : d ∣ a + T) (hb : d ∣ b + T) :
+    a ≡ b [MOD d] := by
+  have ha0 : a + T ≡ 0 [MOD d] := Nat.modEq_zero_iff_dvd.mpr ha
+  have hb0 : b + T ≡ 0 [MOD d] := Nat.modEq_zero_iff_dvd.mpr hb
+  exact Nat.ModEq.add_right_cancel' T (ha0.trans hb0.symm)
+
+/-- If `b` is already a valid residue modulo `d`, congruence of `a` to `b`
+forces `a` to be at least `b`. -/
+lemma le_of_modEq_of_lt_modulus {d a b : ℕ}
+    (hb : b < d) (hmod : a ≡ b [MOD d]) :
+    b ≤ a := by
+  have hbmod : b % d = b := Nat.mod_eq_of_lt hb
+  have hamod : a % d = b := by
+    simpa [Nat.ModEq, hbmod] using hmod
+  calc
+    b = a % d := hamod.symm
+    _ ≤ a := Nat.mod_le a d
 
 lemma SignatureIntersectionCount_fillRank_of_card_gt {k : ℕ} {f : Signature → ℕ}
     {u : Signature} (hu : k < u.card) :
@@ -1177,7 +1208,51 @@ lemma high_signature_count_forced_after_supersets_normalized
   -- the canonical count is the unique residue in `[0, |v|)`. For
   -- `topSignature`, `htop` upgrades divisibility by `100` to the lower bound
   -- `100 ≤ f topSignature`.
-  sorry
+  have hvpos : 0 < v.card := by omega
+  have hvnonempty : v.Nonempty := Finset.card_pos.mp hvpos
+  have htail :
+      strictSupersetContribution f v =
+        strictSupersetContribution canonicalHighCount v :=
+    strictSupersetContribution_eq_canonical_of_strict hstrict
+  have hf_split :
+      v.card ∣ f v + strictSupersetContribution f v := by
+    have h := hf v hvnonempty
+    rwa [SignatureIntersectionCount_eq_self_add_strict] at h
+  have hf_common :
+      v.card ∣ f v + strictSupersetContribution canonicalHighCount v := by
+    simpa [htail] using hf_split
+  have hcanon_split :
+      v.card ∣
+        canonicalHighCount v + strictSupersetContribution canonicalHighCount v := by
+    have h := canonicalHighCount_valid_on_high v hv
+    rwa [SignatureIntersectionCount_eq_self_add_strict] at h
+  have hmod : f v ≡ canonicalHighCount v [MOD v.card] :=
+    modEq_self_of_split_divisibilities hf_common hcanon_split
+  have hcan_le : canonicalHighCount v ≤ f v := by
+    by_cases htop_v : v = topSignature
+    · subst htop_v
+      have hmod0 : f topSignature ≡ 0 [MOD topSignature.card] := by
+        simpa [canonicalHighCount_top, topSignature_card] using hmod
+      have hdvd_top : topSignature.card ∣ f topSignature :=
+        Nat.modEq_zero_iff_dvd.mp hmod0
+      rcases hdvd_top with ⟨m, hm⟩
+      have hmpos : 0 < m := by
+        by_contra hnot
+        have hmzero : m = 0 := Nat.eq_zero_of_not_pos hnot
+        subst hmzero
+        simp at hm
+        omega
+      have hle_top : topSignature.card ≤ f topSignature := by
+        calc
+          topSignature.card = topSignature.card * 1 := by rw [mul_one]
+          _ ≤ topSignature.card * m :=
+            Nat.mul_le_mul_left topSignature.card (Nat.succ_le_of_lt hmpos)
+          _ = f topSignature := hm.symm
+      simpa [canonicalHighCount_top, topSignature_card] using hle_top
+    · exact le_of_modEq_of_lt_modulus
+        (canonicalHighCount_lt_card_of_high_ne_top hv htop_v) hmod
+  refine ⟨hcan_le, ?_⟩
+  exact (Nat.modEq_iff_dvd' hcan_le).mp hmod.symm
 
 lemma normalizeSignature_spec
     {f : Signature → ℕ} {v : Signature}
