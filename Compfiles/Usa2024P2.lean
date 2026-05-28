@@ -462,6 +462,214 @@ lemma pushDown_decreases_objective_at_middle {f : Signature → ℕ} {v : Signat
             (fun w ↦ if 50 ≤ w.card then f w else 0)
             (Finset.mem_univ v)
 
+/-- The contribution to the intersection count of `u` coming from strict
+supersignatures only. This is the part that is already known when lower ranks
+are filled by downward induction. -/
+noncomputable def strictSupersetContribution (f : Signature → ℕ) (u : Signature) : ℕ :=
+  ∑ w : Signature, if u ⊂ w then f w else 0
+
+/-- One step of the construction: fill all signatures of cardinality `k` with
+the least residue that makes their own intersection count divisible by `k`.
+Higher ranks are left unchanged, so this can be iterated for `k = 49, ..., 1`.
+-/
+noncomputable def fillRank (k : ℕ) (f : Signature → ℕ) : Signature → ℕ :=
+  fun v ↦
+    if v.card = k then
+      let s := strictSupersetContribution f v
+      (v.card - s % v.card) % v.card
+    else f v
+
+/-- If `s` is the already-fixed strict-superset contribution, this residue is
+chosen exactly so that `residue + s` is divisible by `d`. -/
+lemma dvd_complement_mod_add {d s : ℕ} (hd : 0 < d) :
+    d ∣ ((d - s % d) % d) + s := by
+  let r := s % d
+  have hrlt : r < d := by simpa [r] using Nat.mod_lt s hd
+  by_cases hr0 : r = 0
+  · have hsmod : s % d = 0 := by simpa [r] using hr0
+    rw [Nat.dvd_iff_mod_eq_zero]
+    simp [hsmod]
+  · have hres : (d - r) % d = d - r := Nat.mod_eq_of_lt (by omega)
+    refine ⟨s / d + 1, ?_⟩
+    calc
+      ((d - s % d) % d) + s = (d - r) + s := by simp [r, hres]
+      _ = (d - r) + (d * (s / d) + r) := by rw [Nat.div_add_mod s d]
+      _ = d * (s / d + 1) := by
+        rw [show (d - r) + (d * (s / d) + r) =
+            ((d - r) + r) + d * (s / d) by omega]
+        rw [Nat.sub_add_cancel (le_of_lt hrlt)]
+        ring
+
+lemma fillRank_eq_of_card {k : ℕ} {f : Signature → ℕ} {v : Signature}
+    (hv : v.card = k) :
+    fillRank k f v =
+      let s := strictSupersetContribution f v
+      (v.card - s % v.card) % v.card := by
+  simp [fillRank, hv]
+
+lemma fillRank_eq_self_of_card_ne {k : ℕ} {f : Signature → ℕ} {v : Signature}
+    (hv : v.card ≠ k) : fillRank k f v = f v := by
+  simp [fillRank, hv]
+
+lemma fillRank_eq_self_of_card_gt {k : ℕ} {f : Signature → ℕ} {v : Signature}
+    (hv : k < v.card) : fillRank k f v = f v := by
+  exact fillRank_eq_self_of_card_ne (by omega)
+
+lemma fillRank_eq_self_of_card_lt {k : ℕ} {f : Signature → ℕ} {v : Signature}
+    (hv : v.card < k) : fillRank k f v = f v := by
+  exact fillRank_eq_self_of_card_ne (by omega)
+
+lemma fillRank_eq_self_of_high {k : ℕ} {f : Signature → ℕ} {v : Signature}
+    (hk : k < 50) (hv : 50 ≤ v.card) : fillRank k f v = f v := by
+  exact fillRank_eq_self_of_card_gt (by omega)
+
+lemma fillRank_eq_self_on_supersets_of_card_lt {k : ℕ} {f : Signature → ℕ}
+    {u w : Signature} (hu : k < u.card) (huw : u ⊆ w) :
+    fillRank k f w = f w := by
+  apply fillRank_eq_self_of_card_gt
+  exact lt_of_lt_of_le hu (Finset.card_le_card huw)
+
+lemma strictSupersetContribution_congr {f g : Signature → ℕ} {u : Signature}
+    (h : ∀ w : Signature, u ⊂ w → f w = g w) :
+    strictSupersetContribution f u = strictSupersetContribution g u := by
+  unfold strictSupersetContribution
+  refine Finset.sum_congr rfl ?_
+  intro w _
+  by_cases huw : u ⊂ w
+  · simp [huw, h w huw]
+  · simp [huw]
+
+/-- Split the intersection count of `u` into the exact `u` term and all strict
+supersignatures. This is the triangularity that makes the downward construction
+work. -/
+lemma SignatureIntersectionCount_eq_self_add_strict
+    (f : Signature → ℕ) (u : Signature) :
+    SignatureIntersectionCount f u = f u + strictSupersetContribution f u := by
+  classical
+  let A : Signature → ℕ := fun w ↦ if u ⊆ w then f w else 0
+  let B : Signature → ℕ := fun w ↦ if u ⊂ w then f w else 0
+  have hsum_erase :
+      (∑ w ∈ (Finset.univ : Finset Signature).erase u, A w) =
+        ∑ w ∈ (Finset.univ : Finset Signature).erase u, B w := by
+    refine Finset.sum_congr rfl ?_
+    intro w hw
+    have hne : w ≠ u := (Finset.mem_erase.mp hw).1
+    by_cases huw : u ⊆ w
+    · have hss : u ⊂ w := Finset.ssubset_iff_subset_ne.mpr ⟨huw, hne.symm⟩
+      simp [A, B, huw, hss]
+    · have hnss : ¬ u ⊂ w := fun h => huw h.1
+      simp [A, B, huw, hnss]
+  have hstrict_erase :
+      strictSupersetContribution f u =
+        ∑ w ∈ (Finset.univ : Finset Signature).erase u, B w := by
+    rw [strictSupersetContribution]
+    rw [← Finset.sum_erase_add (Finset.univ : Finset Signature) B (Finset.mem_univ u)]
+    have hnss : ¬ u ⊂ u := by exact irrefl u
+    simp [B, hnss]
+  calc
+    SignatureIntersectionCount f u =
+        (∑ w ∈ (Finset.univ : Finset Signature).erase u, A w) + A u := by
+          rw [SignatureIntersectionCount]
+          exact (Finset.sum_erase_add (Finset.univ : Finset Signature) A
+            (Finset.mem_univ u)).symm
+    _ = (∑ w ∈ (Finset.univ : Finset Signature).erase u, A w) + f u := by
+          simp [A]
+    _ = f u + (∑ w ∈ (Finset.univ : Finset Signature).erase u, B w) := by
+          rw [hsum_erase, Nat.add_comm]
+    _ = f u + strictSupersetContribution f u := by
+          rw [hstrict_erase]
+
+lemma SignatureIntersectionCount_fillRank_of_card_gt {k : ℕ} {f : Signature → ℕ}
+    {u : Signature} (hu : k < u.card) :
+    SignatureIntersectionCount (fillRank k f) u = SignatureIntersectionCount f u := by
+  classical
+  rw [SignatureIntersectionCount, SignatureIntersectionCount]
+  refine Finset.sum_congr rfl ?_
+  intro w _
+  by_cases huw : u ⊆ w
+  · rw [if_pos huw, if_pos huw, fillRank_eq_self_on_supersets_of_card_lt hu huw]
+  · simp [huw]
+
+lemma fillRank_self_add_strictSupersetContribution_dvd {k : ℕ} {f : Signature → ℕ}
+    {u : Signature} (hu : u.card = k) (hupos : 0 < u.card) :
+    u.card ∣ fillRank k f u + strictSupersetContribution f u := by
+  rw [fillRank_eq_of_card hu]
+  exact dvd_complement_mod_add hupos
+
+/-- The new rank `k` is made valid by construction; strict supersets are
+unchanged because they have larger cardinality. -/
+lemma fillRank_satisfies_rank {k : ℕ} {f : Signature → ℕ} {u : Signature}
+    (hu : u.card = k) (hupos : 0 < u.card) :
+    u.card ∣ SignatureIntersectionCount (fillRank k f) u := by
+  rw [SignatureIntersectionCount_eq_self_add_strict]
+  have hcongr :
+      strictSupersetContribution (fillRank k f) u =
+        strictSupersetContribution f u := by
+    apply strictSupersetContribution_congr
+    intro w huw
+    exact fillRank_eq_self_of_card_gt (by
+      have hcard := Finset.card_lt_card huw
+      omega)
+  rw [hcongr]
+  exact fillRank_self_add_strictSupersetContribution_dvd hu hupos
+
+/-- Filling rank `k` cannot disturb intersection counts for already-completed
+ranks above `k`. -/
+lemma fillRank_preserves_completed_ranks {k : ℕ} {f : Signature → ℕ}
+    (hf : ∀ u : Signature, u.Nonempty → k < u.card →
+      u.card ∣ SignatureIntersectionCount f u) :
+    ∀ u : Signature, u.Nonempty → k < u.card →
+      u.card ∣ SignatureIntersectionCount (fillRank k f) u := by
+  intro u hu hku
+  rw [SignatureIntersectionCount_fillRank_of_card_gt hku]
+  exact hf u hu hku
+
+/-- The induction step for the eventual construction: after filling rank `k`,
+all nonempty signatures of rank at least `k` satisfy their divisibility
+condition. -/
+lemma fillRank_extends_completed_ranks {k : ℕ} {f : Signature → ℕ}
+    (hf : ∀ u : Signature, u.Nonempty → k < u.card →
+      u.card ∣ SignatureIntersectionCount f u) :
+    ∀ u : Signature, u.Nonempty → k ≤ u.card →
+      u.card ∣ SignatureIntersectionCount (fillRank k f) u := by
+  intro u hu hku
+  by_cases huk : u.card = k
+  · exact fillRank_satisfies_rank huk (Finset.card_pos.mpr hu)
+  · apply fillRank_preserves_completed_ranks hf
+    · exact hu
+    · omega
+
+/-- High signatures are not touched during the lower-rank filling process, so
+the objective stays the canonical objective. The final proof should apply this
+lemma at each step for `k < 50`. -/
+lemma SignatureObjective_fillRank_of_low {k : ℕ} {f : Signature → ℕ}
+    (hk : k < 50) :
+    SignatureObjective (fillRank k f) = SignatureObjective f := by
+  rw [SignatureObjective, SignatureObjective]
+  refine Finset.sum_congr rfl ?_
+  intro v _
+  by_cases hv : 50 ≤ v.card
+  · rw [fillRank_eq_self_of_high hk hv]
+  · simp [hv]
+
+/-- Placeholder for the finite iteration over `k = 49, 48, ..., 1`. A convenient
+implementation is to define this by `Nat.iterate` or a fold over
+`List.range 49`, then use `fillRank_extends_completed_ranks` as the loop
+invariant and `SignatureObjective_fillRank_of_low` for the objective. -/
+lemma lower_rank_filling_exists :
+    ∃ f : Signature → ℕ,
+      (∀ u : Signature, u.Nonempty →
+        u.card ∣ SignatureIntersectionCount f u) ∧
+      (∀ v : Signature, 50 ≤ v.card → f v = canonicalHighCount v) ∧
+      SignatureObjective f = SignatureObjective canonicalHighCount := by
+  -- Start from `canonicalHighCount`. The invariant after finishing rank `k` is:
+  --   every nonempty `u` with `k ≤ u.card` is valid,
+  --   every high-rank `v` still has the canonical count,
+  --   the objective is unchanged.
+  -- The base case at rank `50` is `canonicalHighCount_valid_on_high`; the step
+  -- from `k+1` to `k` is `fillRank_extends_completed_ranks`.
+  sorry
+
 /-- The downward-induction construction of the lower-rank counts. This packages
 the easy half of the proof in the signature-count language. -/
 lemma extend_canonical_high_counts :
