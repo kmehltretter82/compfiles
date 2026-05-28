@@ -153,81 +153,29 @@ lemma superset_layer_card (u : Signature) (j : ℕ) :
         (fun v : Signature => u ⊆ v ∧ v.card = u.card + j)).card =
       (100 - u.card).choose j := by
   classical
-  let c : Signature := topSignature \ u
-  let pieces : Finset Signature := Finset.powersetCard j c
+  have hsubset_top : u ⊆ topSignature := by
+    intro a _
+    simp [topSignature]
   have hfilter :
       ((Finset.univ : Finset Signature).filter
           (fun v : Signature => u ⊆ v ∧ v.card = u.card + j)) =
-        pieces.image (fun x : Signature => u ∪ x) := by
+        (topSignature.powersetCard (u.card + j)).filter (fun v : Signature => u ⊆ v) := by
     ext v
     constructor
     · intro hv
-      have hv' := Finset.mem_filter.mp hv
-      have huv : u ⊆ v := hv'.2.1
-      have hvcard : v.card = u.card + j := hv'.2.2
-      refine Finset.mem_image.mpr ⟨v \ u, ?_, ?_⟩
-      · rw [Finset.mem_powersetCard]
-        constructor
-        · intro a ha
-          have hav : a ∈ v := (Finset.mem_sdiff.mp ha).1
-          have hau : a ∉ u := (Finset.mem_sdiff.mp ha).2
-          exact Finset.mem_sdiff.mpr ⟨by simp [topSignature], hau⟩
-        · rw [Finset.card_sdiff_of_subset huv, hvcard]
-          omega
-      · ext a
-        constructor
-        · intro ha
-          rcases Finset.mem_union.mp ha with hau | ha'
-          · exact huv hau
-          · exact (Finset.mem_sdiff.mp ha').1
-        · intro hav
-          by_cases hau : a ∈ u
-          · exact Finset.mem_union_left _ hau
-          · exact Finset.mem_union_right _ (Finset.mem_sdiff.mpr ⟨hav, hau⟩)
+      rw [Finset.mem_filter] at hv ⊢
+      exact ⟨Finset.mem_powersetCard.mpr ⟨by intro a _; simp [topSignature], hv.2.2⟩,
+        hv.2.1⟩
     · intro hv
-      rcases Finset.mem_image.mp hv with ⟨x, hx, rfl⟩
-      have hx' := Finset.mem_powersetCard.mp hx
-      refine Finset.mem_filter.mpr ⟨Finset.mem_univ _, ?_⟩
-      constructor
-      · intro a ha
-        exact Finset.mem_union_left x ha
-      · have hdisj : Disjoint u x := by
-          rw [Finset.disjoint_left]
-          intro a hau hax
-          exact (Finset.mem_sdiff.mp (hx'.1 hax)).2 hau
-        rw [(Finset.card_union_eq_card_add_card).mpr hdisj, hx'.2]
-  have himage_card : (pieces.image (fun x : Signature => u ∪ x)).card = pieces.card := by
-    apply Finset.card_image_of_injOn
-    intro x hx y hy hxy
-    have hx' := Finset.mem_powersetCard.mp hx
-    have hy' := Finset.mem_powersetCard.mp hy
-    change u ∪ x = u ∪ y at hxy
-    ext a
-    constructor
-    · intro hax
-      have hxnotu : a ∉ u := (Finset.mem_sdiff.mp (hx'.1 hax)).2
-      have hay_or : a ∈ u ∪ y := by
-        rw [← hxy]
-        exact Finset.mem_union_right u hax
-      rcases Finset.mem_union.mp hay_or with hau | hay
-      · exact False.elim (hxnotu hau)
-      · exact hay
-    · intro hay
-      have hynotu : a ∉ u := (Finset.mem_sdiff.mp (hy'.1 hay)).2
-      have hax_or : a ∈ u ∪ x := by
-        rw [hxy]
-        exact Finset.mem_union_right u hay
-      rcases Finset.mem_union.mp hax_or with hau | hax
-      · exact False.elim (hynotu hau)
-      · exact hax
-  have hc_card : c.card = 100 - u.card := by
-    have hsubset : u ⊆ topSignature := by
-      intro a _
-      simp [topSignature]
-    rw [Finset.card_sdiff_of_subset hsubset]
+      rw [Finset.mem_filter] at hv ⊢
+      exact ⟨Finset.mem_univ v, hv.2, (Finset.mem_powersetCard.mp hv.1).2⟩
+  rw [hfilter]
+  rw [Finset.card_filter_powersetCard_subset u topSignature (u.card + j) hsubset_top (by omega)]
+  have hcard_top : topSignature.card = 100 := by
     simp [topSignature]
-  rw [hfilter, himage_card]
-  rw [Finset.card_powersetCard, hc_card]
+  rw [hcard_top]
+  congr 1
+  omega
 
 /-- Group the canonical high-count intersection sum by the number of new
 indices added to `u`. If `j = v.card - u.card`, there are
@@ -285,67 +233,51 @@ lemma immediate_supersets_count {u v : Signature} (huv : u ⊆ v) :
         if u ⊆ w ∧ w ⊆ v ∧ w.card + 1 = v.card then 1 else 0) =
       v.card - u.card := by
   classical
-  let missing : Finset Signature := Finset.image (fun a : Fin 100 => v.erase a) (v \ u)
-  have hfilter :
-      ((Finset.univ : Finset Signature).erase v).filter
-          (fun w : Signature => u ⊆ w ∧ w ⊆ v ∧ w.card + 1 = v.card)
-        = missing := by
-    ext w
-    constructor
-    · intro hw
-      have hw' := Finset.mem_filter.mp hw
-      have huw : u ⊆ w := hw'.2.1
-      have hwv : w ⊆ v := hw'.2.2.1
-      have hwcard : w.card + 1 = v.card := hw'.2.2.2
-      have hlt : w.card < v.card := by omega
-      rcases Finset.exists_mem_notMem_of_card_lt_card hlt with ⟨a, hav, haw⟩
-      have hau : a ∉ u := fun ha => haw (huw ha)
-      refine Finset.mem_image.mpr ⟨a, ?_, ?_⟩
-      · exact Finset.mem_sdiff.mpr ⟨hav, hau⟩
-      · symm
-        apply Finset.eq_of_subset_of_card_le
-        · intro x hx
-          have hxv : x ∈ v := hwv hx
-          have hxa : x ≠ a := by
-            intro hxa
-            exact haw (by simpa [hxa] using hx)
-          exact Finset.mem_erase.mpr ⟨hxa, hxv⟩
-        · rw [Finset.card_erase_of_mem hav]
-          omega
-    · intro hw
-      rcases Finset.mem_image.mp hw with ⟨a, ha, rfl⟩
-      have hav : a ∈ v := (Finset.mem_sdiff.mp ha).1
-      have hau : a ∉ u := (Finset.mem_sdiff.mp ha).2
-      have hvcpos : 0 < v.card := Finset.card_pos.mpr ⟨a, hav⟩
-      refine Finset.mem_filter.mpr ⟨?_, ?_⟩
-      · refine Finset.mem_erase.mpr ⟨?_, Finset.mem_univ _⟩
-        intro h
-        have : a ∉ v.erase a := by simp
-        exact this (by rw [h]; exact hav)
-      · refine ⟨?_, ?_, ?_⟩
-        · intro x hx
-          exact Finset.mem_erase.mpr ⟨fun hxa => hau (by simpa [hxa] using hx), huv hx⟩
-        · intro x hx
-          exact (Finset.mem_erase.mp hx).2
-        · rw [Finset.card_erase_of_mem hav]
-          omega
   rw [← Finset.card_filter
     (fun w : Signature => u ⊆ w ∧ w ⊆ v ∧ w.card + 1 = v.card)
     ((Finset.univ : Finset Signature).erase v)]
-  rw [hfilter]
-  have himage_card : missing.card = (v \ u).card := by
-    apply Finset.card_image_of_injOn
-    intro a ha b hb hab
-    change v.erase a = v.erase b at hab
-    by_contra hne
-    have hmem : a ∈ v.erase b := by
-      exact Finset.mem_erase.mpr ⟨hne, (Finset.mem_sdiff.mp ha).1⟩
-    have hmem' : a ∈ v.erase a := by
-      rw [hab]
-      exact hmem
-    have : a ∉ v.erase a := by simp
-    exact this hmem'
-  rw [himage_card, Finset.card_sdiff_of_subset huv]
+  by_cases huv_eq : u = v
+  · subst huv_eq
+    rw [tsub_self]
+    have hfilter :
+        ((Finset.univ : Finset Signature).erase u).filter
+            (fun w : Signature => u ⊆ w ∧ w ⊆ u ∧ w.card + 1 = u.card) = ∅ := by
+      ext w
+      constructor
+      · intro hw
+        exfalso
+        rw [Finset.mem_filter] at hw
+        have hwu : w = u := Finset.Subset.antisymm hw.2.2.1 hw.2.1
+        exact (Finset.mem_erase.mp hw.1).1 hwu
+      · intro hw
+        simp at hw
+    rw [hfilter, Finset.card_empty]
+  · have hcard_lt : u.card < v.card :=
+      Finset.card_lt_card (Finset.ssubset_iff_subset_ne.mpr ⟨huv, huv_eq⟩)
+    have hfilter :
+        ((Finset.univ : Finset Signature).erase v).filter
+            (fun w : Signature => u ⊆ w ∧ w ⊆ v ∧ w.card + 1 = v.card) =
+          (v.powersetCard (v.card - 1)).filter (fun w : Signature => u ⊆ w) := by
+      ext w
+      constructor
+      · intro hw
+        rw [Finset.mem_filter] at hw ⊢
+        exact ⟨Finset.mem_powersetCard.mpr ⟨hw.2.2.1, by omega⟩, hw.2.1⟩
+      · intro hw
+        rw [Finset.mem_filter] at hw ⊢
+        have hw' := Finset.mem_powersetCard.mp hw.1
+        refine ⟨?_, hw.2, hw'.1, by omega⟩
+        refine Finset.mem_erase.mpr ⟨?_, Finset.mem_univ w⟩
+        intro hwv
+        have : w.card = v.card := by rw [hwv]
+        omega
+    rw [hfilter]
+    rw [Finset.card_filter_powersetCard_subset u v (v.card - 1) huv (by omega)]
+    have hidx : v.card - 1 - u.card = v.card - u.card - 1 := by omega
+    rw [hidx]
+    cases hdiff : v.card - u.card with
+    | zero => omega
+    | succ n => simp [Nat.choose_succ_self_right]
 
 lemma canonicalHighCount_valid_on_high :
     ∀ u : Signature, 50 ≤ u.card →
@@ -875,8 +807,7 @@ lemma signatureCount_condition_of_good (S : Fin 100 → Set ℤ) (hS : Good S) :
       (⋂ i ∈ u, S i) = {z : ℤ | u ⊆ signatureOf S z} := by
     ext z
     constructor
-    · intro hz
-      intro i hi
+    · intro hz i hi
       have hzi : z ∈ S i := Set.mem_iInter₂.mp hz i hi
       simp [signatureOf, hzi]
     · intro hz
@@ -974,7 +905,7 @@ lemma signatureObjective_eq_original_objective
               cases v.eq_empty_or_nonempty with
               | inl hempty =>
                   exfalso
-                  simpa [hempty] using hv
+                  simp [hempty] at hv
               | inr h => exact h
             simp [hv, signatureCount, hvnonempty]
           · simp [hv]
