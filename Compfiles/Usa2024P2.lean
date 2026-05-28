@@ -617,6 +617,153 @@ lemma signatureObjective_eq_original_objective
             (fun v : Signature => 50 ≤ v.card) hobj_finite).symm
     _ = {z : ℤ | InAtLeastKSubsets S 50 z}.ncard := by rw [hobj_set]
 
+lemma topSignature_card : topSignature.card = 100 := by
+  simp [topSignature]
+
+lemma topSignature_nonempty : topSignature.Nonempty := by
+  exact ⟨0, by simp [topSignature]⟩
+
+lemma eq_topSignature_of_card_eq_100 {v : Signature} (hv : v.card = 100) :
+    v = topSignature := by
+  apply Finset.eq_univ_of_card
+  simp [hv]
+
+lemma card_lt_100_of_ne_topSignature {v : Signature} (hvt : v ≠ topSignature) :
+    v.card < 100 := by
+  have hle : v.card ≤ 100 := by
+    have h := Finset.card_le_univ v
+    simpa using h
+  by_contra hnot
+  have hv : v.card = 100 := by omega
+  exact hvt (eq_topSignature_of_card_eq_100 hv)
+
+lemma canonicalHighCount_top : canonicalHighCount topSignature = 100 := by
+  simp [canonicalHighCount, topSignature]
+
+lemma canonicalHighCount_lt_card_of_high_ne_top {v : Signature}
+    (hv : 50 ≤ v.card) (hvt : v ≠ topSignature) :
+    canonicalHighCount v < v.card := by
+  have hlt : v.card < 100 := card_lt_100_of_ne_topSignature hvt
+  simp [canonicalHighCount, hv]
+  omega
+
+lemma canonicalHighCount_le_card_of_high {v : Signature} (hv : 50 ≤ v.card) :
+    canonicalHighCount v ≤ v.card := by
+  by_cases htop : v = topSignature
+  · subst htop
+    simp [canonicalHighCount, topSignature]
+  · exact le_of_lt (canonicalHighCount_lt_card_of_high_ne_top hv htop)
+
+lemma iterate_pushDown_self (f : Signature → ℕ) (v : Signature) (n : ℕ) :
+    (Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f) v =
+      f v - n * v.card := by
+  induction n with
+  | zero => simp [Nat.iterate]
+  | succ n ih =>
+      rw [Function.iterate_succ']
+      simp [pushDown, ih]
+      rw [Nat.sub_sub]
+      congr 1
+      ring
+
+lemma iterate_pushDown_condition {f : Signature → ℕ} {v : Signature} (n : ℕ)
+    (hsteps : n * v.card ≤ f v) (hf : SignatureCountCondition f) :
+    SignatureCountCondition
+      (Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f) := by
+  induction n with
+  | zero => simpa [Nat.iterate]
+  | succ n ih =>
+      rw [Function.iterate_succ']
+      change SignatureCountCondition
+        (pushDown ((Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f)) v)
+      apply pushDown_preserves_condition
+      · rw [iterate_pushDown_self]
+        have hn : (n + 1) * v.card = n * v.card + v.card := by ring
+        omega
+      · apply ih
+        have : n * v.card ≤ (n + 1) * v.card := by nlinarith [Nat.zero_le v.card]
+        omega
+
+lemma iterate_pushDown_objective_le {f : Signature → ℕ} {v : Signature} (n : ℕ)
+    (hv : 50 ≤ v.card) (hsteps : n * v.card ≤ f v) :
+    SignatureObjective
+        (Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f) ≤
+      SignatureObjective f := by
+  induction n with
+  | zero => simp [Nat.iterate]
+  | succ n ih =>
+      rw [Function.iterate_succ']
+      change SignatureObjective
+          (pushDown ((Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f)) v) ≤
+        SignatureObjective f
+      have hprev : n * v.card ≤ f v := by
+        have : n * v.card ≤ (n + 1) * v.card := by nlinarith [Nat.zero_le v.card]
+        omega
+      have henough : v.card ≤
+          (Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f) v := by
+        rw [iterate_pushDown_self]
+        have hn : (n + 1) * v.card = n * v.card + v.card := by ring
+        omega
+      by_cases hlarge : 50 < v.card
+      · rw [pushDown_preserves_objective_of_large hlarge henough]
+        exact ih hprev
+      · have hmid : v.card = 50 := by omega
+        have hdrop := pushDown_decreases_objective_at_middle hmid henough
+        have hle_step : SignatureObjective (pushDown
+            (Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f) v) ≤
+            SignatureObjective
+              (Nat.iterate (fun g : Signature → ℕ => pushDown g v) n f) := by
+          omega
+        exact le_trans hle_step (ih hprev)
+
+lemma pushDown_to_canonical_count {f : Signature → ℕ} {v : Signature}
+    (hf : SignatureCountCondition f) (hv : 50 ≤ v.card)
+    (hcan_le : canonicalHighCount v ≤ f v)
+    (hdiv : v.card ∣ f v - canonicalHighCount v) :
+    let n := (f v - canonicalHighCount v) / v.card
+    let g := Nat.iterate (fun h : Signature → ℕ => pushDown h v) n f
+    SignatureCountCondition g ∧ SignatureObjective g ≤ SignatureObjective f ∧
+      g v = canonicalHighCount v := by
+  dsimp
+  let n := (f v - canonicalHighCount v) / v.card
+  have hmul : n * v.card = f v - canonicalHighCount v := by
+    dsimp [n]
+    exact Nat.div_mul_cancel hdiv
+  have hsteps : n * v.card ≤ f v := by omega
+  refine ⟨iterate_pushDown_condition n hsteps hf, iterate_pushDown_objective_le n hv hsteps, ?_⟩
+  rw [iterate_pushDown_self, hmul]
+  omega
+
+lemma high_signature_count_forced_after_supersets_normalized
+    {f : Signature → ℕ} {v : Signature}
+    (hf : SignatureCountCondition f) (htop : 0 < f topSignature)
+    (hv : 50 ≤ v.card)
+    (hstrict : ∀ w : Signature, v ⊂ w → f w = canonicalHighCount w) :
+    canonicalHighCount v ≤ f v ∧ v.card ∣ f v - canonicalHighCount v := by
+  -- At this point the strict supersets of `v` have already been smoothed.
+  -- Splitting the intersection count at `v` into the `v`-term and strict
+  -- supersets gives a congruence for `f v` modulo `|v|`. For non-top `v`,
+  -- the canonical count is the unique residue in `[0, |v|)`. For
+  -- `topSignature`, `htop` upgrades divisibility by `100` to the lower bound
+  -- `100 ≤ f topSignature`.
+  sorry
+
+lemma smooth_high_signatures_to_canonical
+    (f : Signature → ℕ)
+    (hf : SignatureCountCondition f) (htop : 0 < f topSignature) :
+    ∃ g : Signature → ℕ,
+      SignatureCountCondition g ∧
+      SignatureObjective g ≤ SignatureObjective f ∧
+      (∀ v : Signature, 50 ≤ v.card → g v = canonicalHighCount v) := by
+  -- Process ranks `100, 99, ..., 50`. At a signature `v`, all strict
+  -- supersets have already been normalized, so
+  -- `high_signature_count_forced_after_supersets_normalized` says exactly how
+  -- many complete `|v|`-blocks can be pushed down while leaving the canonical
+  -- high-rank residue. The iteration helpers above package the repeated
+  -- push-down at one fixed signature; the remaining bookkeeping is the finite
+  -- induction over the high-rank signatures ordered by descending cardinality.
+  sorry
+
 /-- The smoothing argument. Repeated push-downs transform any valid signature
 count model into the canonical high-rank model, never increasing the objective.
 -/
@@ -629,7 +776,20 @@ lemma signature_model_lower_bound
   -- above rank `50` and can only decrease it at rank `50`. The final residues
   -- are forced to agree with `canonicalHighCount`, whose objective is
   -- `solution`.
-  sorry
+  classical
+  rcases smooth_high_signatures_to_canonical f hf htop with
+    ⟨g, _hg, hobj_le, hcanonical⟩
+  have hgobj : SignatureObjective g = SignatureObjective canonicalHighCount := by
+    rw [SignatureObjective, SignatureObjective]
+    refine Finset.sum_congr rfl ?_
+    intro v _
+    by_cases hv : 50 ≤ v.card
+    · simp [hv, hcanonical v hv]
+    · simp [hv]
+  calc
+    solution = SignatureObjective canonicalHighCount := canonicalHighCount_objective.symm
+    _ = SignatureObjective g := hgobj.symm
+    _ ≤ SignatureObjective f := hobj_le
 
 snip end
 
