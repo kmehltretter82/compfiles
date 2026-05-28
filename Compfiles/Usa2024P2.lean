@@ -266,7 +266,7 @@ lemma sum_supersets_by_rank
                       (fun v : Signature => v.card = u.card + j) =
                     supersetLayer u j := by
                   ext v
-                  simp [supersetLayer, and_assoc]
+                  simp [supersetLayer]
                 rw [hfilter]
             _ = ∑ v ∈ supersetLayer u j, F (u.card + j) := by
                 refine Finset.sum_congr rfl ?_
